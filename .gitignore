@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+
+# Storage
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/audio_cache/*
+!storage/audio_cache/.gitkeep
+storage/exports/*
+!storage/exports/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
