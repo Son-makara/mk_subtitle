@@ -62,6 +62,20 @@ export default function App() {
   // Storage usage
   const [storageUsage, setStorageUsage] = useState({ total_mb: 0 });
 
+  // Online / Offline detection
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Modals
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiModalMode, setAiModalMode] = useState('whisper');
@@ -262,6 +276,11 @@ export default function App() {
 
   // Generate audio for selected items (using Edge-TTS)
   const handleGenerateSelectedAudio = async () => {
+    if (!navigator.onLine) {
+      alert('Internet connection required: Edge-TTS neural voiceover requires an active internet connection to generate speech. Editing, Whisper STT, and Video Rendering work 100% offline.');
+      return;
+    }
+
     const targets = subtitles.filter((s) => selectedIds.includes(s.id));
     if (targets.length === 0) {
       alert('Please select at least one subtitle row to generate voice.');
@@ -403,6 +422,10 @@ export default function App() {
 
   // Translate subtitles
   const handleStartTranslate = async (params) => {
+    if (!navigator.onLine) {
+      alert('Internet connection required: AI Translation requires an internet connection. You can edit subtitles directly in the table while offline.');
+      return;
+    }
     if (subtitles.length === 0) {
       alert('No subtitles loaded to translate.');
       return;
@@ -1160,10 +1183,30 @@ export default function App() {
           color: 'var(--text-muted)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <img src="/logo.png" alt="MK" style={{ width: '13px', height: '13px', borderRadius: '50%' }} />
             MK Movie Ready
+          </span>
+          <span
+            style={{
+              color: isOnline ? '#10b981' : '#f59e0b',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontWeight: 500
+            }}
+            title={isOnline ? 'Online: All features (including Edge-TTS & Translation) ready' : 'Offline: Video editing, Whisper STT, and Video Rendering work 100% locally'}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: isOnline ? '#10b981' : '#f59e0b'
+              }}
+            />
+            {isOnline ? 'Online' : 'Offline Mode'}
           </span>
           <span>Project: {videoFilename || 'Untitled Project'}</span>
           <span style={{ color: storageUsage.total_mb > 0 ? '#38bdf8' : 'var(--text-muted)' }}>
