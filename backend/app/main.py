@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import uuid
+import asyncio
 from pathlib import Path
 from typing import List, Optional
 
@@ -82,7 +83,7 @@ async def upload_video(file: UploadFile = File(...)):
     with open(dest_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    metadata = probe_video(dest_path)
+    metadata = await asyncio.to_thread(probe_video, dest_path)
     return {
         "filename": unique_name,
         "url": f"/api/video/{unique_name}",
@@ -342,14 +343,16 @@ async def tts_batch(req: TTSBatchRequest):
 @app.post("/api/render/burn")
 async def burn_video_endpoint(req: VideoBurnRequest, background_tasks: BackgroundTasks):
     try:
-        # Run render synchronously or in background
-        export_filename = render_and_burn_video(req)
+        # Run render non-blockingly in background threadpool to keep server fast and smooth
+        export_filename = await asyncio.to_thread(render_and_burn_video, req)
         return {
             "status": "success",
             "export_filename": export_filename,
             "download_url": f"/api/exports/{export_filename}"
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Burn render failed: {str(e)}")
 
 # Mount frontend build static directory if present

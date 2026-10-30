@@ -185,6 +185,38 @@ export default function TimelineEditor({
 
         {/* Right Side: Action Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {subtitles.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '11px',
+                marginRight: '6px',
+                backgroundColor: 'var(--bg-base)',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-light)'
+              }}
+            >
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#60a5fa', fontWeight: 600 }}
+                title="Detected Male voices"
+              >
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3b82f6' }} />
+                {subtitles.filter((s) => s.gender === 'Male').length} Male
+              </span>
+              <span style={{ color: 'var(--border-light)' }}>•</span>
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#34d399', fontWeight: 600 }}
+                title="Detected Female voices"
+              >
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                {subtitles.filter((s) => s.gender === 'Female').length} Female
+              </span>
+            </div>
+          )}
+
           {/* Transcribe Button */}
           <button
             onClick={onTranscribeClick}
@@ -197,9 +229,10 @@ export default function TimelineEditor({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              cursor: 'pointer',
+              cursor: isTranscribing ? 'not-allowed' : 'pointer',
+              opacity: isTranscribing ? 0.75 : 1,
               border: 'none',
-              backgroundColor: isTranscribing ? '#dc2626' : '#059669',
+              backgroundColor: isTranscribing ? '#047857' : '#059669',
               color: '#fff',
               boxShadow: '0 2px 6px rgba(5, 150, 105, 0.3)',
               transition: 'all 0.15s ease'
@@ -210,7 +243,7 @@ export default function TimelineEditor({
             ) : (
               <Sparkles size={14} />
             )}
-            {isTranscribing ? 'Stop Transcribing' : 'Transcribe'}
+            {isTranscribing ? 'Transcribing...' : 'Transcribe'}
           </button>
 
           {/* Generate Selected Audio Button */}
@@ -395,6 +428,7 @@ export default function TimelineEditor({
               const left = (item.start_time / duration) * 100;
               const width = Math.max(0.4, ((item.end_time - item.start_time) / duration) * 100);
               const isSelected = selectedIds.includes(item.id);
+              const isMale = item.gender === 'Male';
 
               return (
                 <div
@@ -417,14 +451,19 @@ export default function TimelineEditor({
                     width: `${width}%`,
                     top: '4px',
                     bottom: '4px',
-                    backgroundColor: isSelected ? '#10b981' : '#059669',
-                    border: isSelected ? '1px solid #6ee7b7' : '1px solid #10b981',
+                    backgroundColor: isSelected
+                      ? (isMale ? '#2563eb' : '#10b981')
+                      : (isMale ? '#1d4ed8' : '#047857'),
+                    border: isSelected
+                      ? (isMale ? '1px solid #93c5fd' : '1px solid #6ee7b7')
+                      : (isMale ? '1px solid #3b82f6' : '1px solid #059669'),
                     borderRadius: '4px',
                     color: '#fff',
                     fontSize: '10px',
                     padding: '0 6px',
                     display: 'flex',
                     alignItems: 'center',
+                    gap: '4px',
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
                     textOverflow: 'ellipsis',
@@ -433,9 +472,25 @@ export default function TimelineEditor({
                     zIndex: isSelected ? 20 : 10,
                     userSelect: 'none'
                   }}
-                  title={item.translated_text || item.text}
+                  title={`[${item.gender || 'Female'}] ${formatTime(item.start_time)} - ${formatTime(item.end_time)}: ${item.translated_text || item.text}`}
                 >
-                  {item.translated_text || item.text}
+                  <span
+                    style={{
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      padding: '1px 3px',
+                      borderRadius: '2px',
+                      backgroundColor: isMale ? 'rgba(30, 58, 138, 0.9)' : 'rgba(6, 78, 59, 0.9)',
+                      color: isMale ? '#bfdbfe' : '#a7f3d0',
+                      border: isMale ? '1px solid #3b82f6' : '1px solid #10b981',
+                      flexShrink: 0
+                    }}
+                  >
+                    {isMale ? 'M' : 'F'}
+                  </span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {item.translated_text || item.text}
+                  </span>
 
                   {/* Right resize handle */}
                   <div
@@ -579,6 +634,19 @@ export default function TimelineEditor({
                     }}
                     title={`Audio: ${item.gender} - Speed: ${speedLabel} - Click to preview`}
                   >
+                    <span
+                      style={{
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        padding: '1px 3px',
+                        borderRadius: '2px',
+                        backgroundColor: item.gender === 'Male' ? 'rgba(30, 58, 138, 0.9)' : 'rgba(79, 70, 229, 0.9)',
+                        color: item.gender === 'Male' ? '#bfdbfe' : '#e0e7ff',
+                        flexShrink: 0
+                      }}
+                    >
+                      {item.gender === 'Male' ? 'M' : 'F'}
+                    </span>
                     <Volume2 size={11} style={{ flexShrink: 0, opacity: 0.8 }} />
                     <span style={{ fontFamily: 'monospace', fontSize: '9px' }}>
                       {speedLabel}

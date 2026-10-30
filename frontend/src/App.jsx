@@ -56,6 +56,7 @@ export default function App() {
   // Status & processing
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
@@ -400,7 +401,7 @@ export default function App() {
         setSubtitles(
           data.items.map((it) => ({
             ...it,
-            gender: 'Female',
+            gender: it.gender || 'Female',
             audio_status: 'idle',
             speed: 1.0,
             translated_text: it.translated_text || null
@@ -420,36 +421,58 @@ export default function App() {
     }
   };
 
-  // Translate subtitles
-  const handleStartTranslate = async (params) => {
+  // Translate subtitles (Google Free or Gemini AI)
+  const handleStartTranslate = async (params = {}) => {
     if (!navigator.onLine) {
-      alert('Internet connection required: AI Translation requires an internet connection. You can edit subtitles directly in the table while offline.');
+      alert('Internet connection required: Translation requires an active internet connection. You can edit subtitles directly in the table while offline.');
       return;
     }
     if (subtitles.length === 0) {
       alert('No subtitles loaded to translate.');
       return;
     }
-    setIsProcessing(true);
-    setStatusMessage('Translating subtitles to Khmer...');
+
+    // Determine targets: translate selected subset, or all lines if all/none selected
+    const isSubset = selectedIds.length > 0 && selectedIds.length < subtitles.length;
+    const targetItems = isSubset
+      ? subtitles.filter((s) => selectedIds.includes(s.id))
+      : subtitles;
+
+    setIsTranslating(true);
+    setStatusMessage(`Translating ${targetItems.length} lines to Khmer...`);
     try {
       const res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: subtitles,
-          ...params
+          items: targetItems,
+          provider: params?.provider || 'google_free',
+          source_lang: params?.source_lang || 'auto',
+          target_lang: params?.target_lang || 'km',
+          gemini_api_key: params?.gemini_api_key || null
         })
       });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Server returned status ${res.status}`);
+      }
+
       const data = await res.json();
       if (data.items) {
-        setSubtitles(data.items);
+        const lookup = {};
+        data.items.forEach((it) => {
+          lookup[it.id] = it.translated_text;
+        });
+        setSubtitles((prev) =>
+          prev.map((s) => (lookup[s.id] !== undefined ? { ...s, translated_text: lookup[s.id] } : s))
+        );
         setAiModalOpen(false);
       }
     } catch (err) {
       alert(`Translation failed: ${err.message}`);
     } finally {
-      setIsProcessing(false);
+      setIsTranslating(false);
       setStatusMessage('');
     }
   };
@@ -553,48 +576,58 @@ export default function App() {
   const handleSaveRenderedVideo = async (result, autoPurge = true) => {
     try {
       const suggestedName = result.export_filename || 'rendered_dubbed_video.mp4';
+      setStatusMessage('Saving video to your chosen location...');
 
-      if (window.showSaveFilePicker) {
-        const fileHandle = await window.showSaveFilePicker({
-          suggestedName,
-          types: [{
-            description: 'MP4 Video File',
-            accept: { 'video/mp4': ['.mp4'] }
-          }]
-        });
+      let saved = false;
 
-        setStatusMessage('Saving video to your chosen location...');
-        const resp = await fetch(`${result.download_url}?delete_after=${autoPurge}`);
-        const blob = await resp.blob();
-        const writable = await fileHandle.createWritable();
-        await writable.write(blob);
-        await writable.close();
+      // Try File System Access API if supported in browser environment
+      if (typeof window.showSaveFilePicker === 'function') {
+        try {
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName,
+            types: [{
+              description: 'MP4 Video File',
+              accept: { 'video/mp4': ['.mp4'] }
+            }]
+          });
 
-        if (autoPurge) {
-          await fetch('/api/storage/clean?clean_audio_cache=true&clean_exports=true', { method: 'POST' });
-          await fetchStorageUsage();
+          const resp = await fetch(`${result.download_url}?delete_after=${autoPurge}`);
+          if (!resp.ok) throw new Error(`Download response status: ${resp.status}`);
+          const blob = await resp.blob();
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          saved = true;
+        } catch (pickerErr) {
+          if (pickerErr.name === 'AbortError') {
+            // User cancelled the file picker dialog
+            return;
+          }
+          console.warn('File picker unsupported or failed in this window context, falling back to download link:', pickerErr);
         }
+      }
 
-        alert('Video successfully saved to your selected location! Server temporary cache was purged.');
-        setExportModalOpen(false);
-      } else {
+      // Fallback: standard link download (reliable across Edge WebView2 and all browsers)
+      if (!saved) {
         const a = document.createElement('a');
         a.href = `${result.download_url}?delete_after=${autoPurge}`;
         a.download = suggestedName;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
+      }
 
-        if (autoPurge) {
-          setTimeout(async () => {
-            await fetch('/api/storage/clean?clean_audio_cache=true&clean_exports=true', { method: 'POST' });
-            await fetchStorageUsage();
-          }, 3000);
-        }
-        setExportModalOpen(false);
+      if (autoPurge) {
+        setTimeout(async () => {
+          await fetch('/api/storage/clean?clean_audio_cache=true&clean_exports=true', { method: 'POST' });
+          await fetchStorageUsage();
+        }, 2000);
       }
+
+      alert('Video successfully saved to your computer! Temporary render files were cleaned.');
+      setExportModalOpen(false);
     } catch (err) {
-      if (err.name !== 'AbortError') {
-        alert(`Save failed: ${err.message}`);
-      }
+      alert(`Save failed: ${err.message}`);
     } finally {
       setStatusMessage('');
     }
@@ -620,15 +653,21 @@ export default function App() {
           video_filename: videoServerFilename || videoFilename,
           items: subtitles,
           bgm_filename: bgmFilename,
-          ...burnOptions,
-          mute_original_audio: isAudioMutedToggle ? true : burnOptions.mute_original_audio,
-          background_ducking_volume: isAudioMutedToggle ? 0.0 : burnOptions.background_ducking_volume
+          ...burnOptions
         })
       });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Server returned error status ${res.status}`);
+      }
+
       const data = await res.json();
       if (data.download_url) {
         setBurnResult(data);
         await fetchStorageUsage();
+      } else {
+        throw new Error('Server completed render but did not return a valid download URL.');
       }
     } catch (err) {
       alert(`Burn render failed: ${err.message}`);
@@ -1144,6 +1183,12 @@ export default function App() {
             onSeekTime={setCurrentTime}
             onPlayAudioItem={handlePlayAudioItem}
             playingAudioId={playingAudioId}
+            onTranslateClick={() => handleStartTranslate({ provider: 'google_free' })}
+            onOpenTranslateModal={() => {
+              setAiModalMode('translate');
+              setAiModalOpen(true);
+            }}
+            isTranslating={isTranslating}
           />
         </div>
       </div>
@@ -1229,7 +1274,7 @@ export default function App() {
         onUploadVideo={handleVideoUpload}
         onStartWhisper={handleStartWhisper}
         onStartTranslate={handleStartTranslate}
-        isProcessing={isTranscribing || isProcessing}
+        isProcessing={isTranscribing || isTranslating || isProcessing}
       />
 
       <ExportModal

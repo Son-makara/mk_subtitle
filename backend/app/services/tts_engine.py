@@ -6,7 +6,7 @@ import edge_tts
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from ..config import AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH
+from ..config import AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH, SUBPROCESS_FLAGS
 from ..models.subtitle import SubtitleItem
 
 # Curated popular voices with readable labels
@@ -67,7 +67,14 @@ def get_audio_duration(file_path: str) -> float:
             "-of", "default=noprint_wrappers=1:nokey=1",
             file_path
         ]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+            creationflags=SUBPROCESS_FLAGS
+        )
         return float(result.stdout.strip())
     except Exception:
         return 0.0
@@ -89,10 +96,17 @@ def time_stretch_audio(input_file: str, output_file: str, tempo_ratio: float) ->
             FFMPEG_PATH, "-y",
             "-i", input_file,
             "-filter:a", filter_str,
+            "-threads", "0",
             "-vn",
             output_file
         ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            creationflags=SUBPROCESS_FLAGS
+        )
         return True
     except Exception as e:
         print(f"Error time-stretching audio: {e}")
@@ -163,7 +177,7 @@ async def generate_speech_for_text(
     }
 
 async def generate_batch_tts(
-    items: List[SubtitleItem],
+    items: Any,
     use_translation: bool = True,
     voice: Optional[str] = None,
     voice_male: str = "km-KH-PisethNeural",
@@ -174,7 +188,18 @@ async def generate_batch_tts(
     auto_fit: bool = True
 ) -> List[SubtitleItem]:
     """Generates TTS for items using their gender profile (Male/Female)"""
-    sem = asyncio.Semaphore(4) # Run up to 4 parallel edge-tts connections
+    if hasattr(items, "items"):
+        req = items
+        items = req.items
+        use_translation = getattr(req, "use_translation", use_translation)
+        voice_male = getattr(req, "voice_male", voice_male)
+        voice_female = getattr(req, "voice_female", voice_female)
+        rate = getattr(req, "rate", rate)
+        pitch = getattr(req, "pitch", pitch)
+        volume = getattr(req, "volume", volume)
+        auto_fit = getattr(req, "auto_fit", auto_fit)
+
+    sem = asyncio.Semaphore(6) # Run up to 6 parallel edge-tts connections
 
     async def process_item(item: SubtitleItem):
         async with sem:

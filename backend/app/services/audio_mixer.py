@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from ..config import AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH
+from ..config import AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH, SUBPROCESS_FLAGS
 from ..models.subtitle import SubtitleItem
 
 def build_dubbed_audio_track(
@@ -22,24 +22,38 @@ def build_dubbed_audio_track(
 
     # Filter items that have audio_url
     audio_items = []
+    max_audio_end = 0.0
     for it in items:
         if it.audio_url:
             # audio_url is like '/api/audio/tts_raw_xxxx.mp3'
-            fname = Path(it.audio_url).name
+            clean_url = str(it.audio_url).split("?")[0]
+            fname = Path(clean_url).name
             fpath = AUDIO_CACHE_DIR / fname
             if fpath.exists():
-                audio_items.append((it.start_time, fpath))
+                start_sec = it.audio_start if (it.audio_start is not None) else it.start_time
+                dur = it.audio_duration or 2.0
+                max_audio_end = max(max_audio_end, start_sec + dur)
+                audio_items.append((max(start_sec, 0.0), fpath))
+
+    # Ensure total duration encompasses all dubbed clips
+    final_duration = max(total_duration, max_audio_end, 1.0)
 
     if not audio_items:
-        # Create silent track of total_duration
+        # Create silent track of final_duration
         cmd = [
             FFMPEG_PATH, "-y",
-            "-f", "lavfi", "-i", f"anullsrc=r=44100:cl=stereo",
-            "-t", str(max(total_duration, 1.0)),
+            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+            "-t", str(final_duration),
             "-c:a", "aac",
             str(output_path)
         ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            creationflags=SUBPROCESS_FLAGS
+        )
         return str(output_path)
 
     # Construct FFmpeg complex filter with adelay and amix
@@ -66,12 +80,19 @@ def build_dubbed_audio_track(
         *inputs,
         "-filter_complex", full_filter,
         "-map", "[mixed]",
-        "-t", str(max(total_duration, 1.0)),
+        "-t", str(final_duration),
+        "-threads", "0",
         "-c:a", "aac",
         "-b:a", "192k",
         str(output_path)
     ]
 
-    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        creationflags=SUBPROCESS_FLAGS
+    )
     return str(output_path)
 

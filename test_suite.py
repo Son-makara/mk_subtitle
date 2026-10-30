@@ -16,6 +16,10 @@ from backend.app.services.tts_engine import (
     get_audio_duration
 )
 from backend.app.services.translator import translate_text_google_free
+from backend.app.models.subtitle import VideoBurnRequest
+from backend.app.services.ffmpeg_runner import render_and_burn_video, probe_video
+from backend.app.config import UPLOADS_DIR, FFMPEG_PATH
+import subprocess
 
 SAMPLE_SRT = """1
 00:00:01,000 --> 00:00:03,500
@@ -55,6 +59,30 @@ async def run_tests():
     )
     print(f"Generated TTS audio: {tts_res['audio_filename']} (duration: {tts_res['duration']}s)")
     assert tts_res["duration"] > 0
+
+    print("\n=== [6] Testing Video Render & Subtitle Burning ===")
+    # Ensure test video exists
+    test_vid = UPLOADS_DIR / "test_sample.mp4"
+    if not test_vid.exists():
+        subprocess.run([
+            FFMPEG_PATH, "-y",
+            "-f", "lavfi", "-i", "testsrc=duration=2:size=640x360:rate=25",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+            "-c:v", "libx264", "-c:a", "aac",
+            str(test_vid)
+        ], check=True)
+
+    burn_req = VideoBurnRequest(
+        video_filename="test_sample.mp4",
+        items=fixed,
+        use_translation=False,
+        include_dubbing=False,
+        use_amf_gpu=True,
+        add_logo_watermark=True
+    )
+    rendered_file = render_and_burn_video(burn_req)
+    print(f"Rendered video: {rendered_file}")
+    assert rendered_file.endswith(".mp4")
 
     print("\n✅ ALL TESTS PASSED!")
 

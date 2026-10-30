@@ -169,6 +169,22 @@ export default function ExportModal({
                     <FolderCheck size={18} /> Choose Location & Save Video
                   </button>
 
+                  <a
+                    href={downloadResult.download_url}
+                    download={downloadResult.export_filename || 'rendered_video.mp4'}
+                    className="btn-secondary"
+                    style={{
+                      padding: '10px',
+                      justifyContent: 'center',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      textDecoration: 'none',
+                      color: 'var(--text-bright)'
+                    }}
+                  >
+                    <Download size={16} /> Direct Download
+                  </a>
+
                   <label
                     style={{
                       display: 'flex',

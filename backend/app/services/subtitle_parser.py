@@ -1,6 +1,6 @@
 import re
 import uuid
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from ..models.subtitle import SubtitleItem
 
 def seconds_to_srt_time(seconds: float) -> str:
@@ -172,28 +172,58 @@ def export_vtt(items: List[SubtitleItem], use_translated: bool = False) -> str:
         output_lines.append("")
     return "\n".join(output_lines)
 
-def export_ass(items: List[SubtitleItem], use_translated: bool = False, style_preset: str = "modern_yellow") -> str:
-    # ASS Header with styles
-    header = """[Script Info]
+def export_ass(
+    items: List[SubtitleItem],
+    use_translated: bool = False,
+    style_preset: str = "modern_yellow",
+    font_name: Optional[str] = None,
+    font_size: Optional[int] = None,
+    primary_color: Optional[str] = None,
+    outline_color: Optional[str] = None,
+    play_res_x: int = 1920,
+    play_res_y: int = 1080
+) -> str:
+    # ASS Header with responsive resolution (supports both 16:9 landscape and 9:16 portrait)
+    header = f"""[Script Info]
 Title: mk_subtitle Auto Generated
 ScriptType: v4.00+
 WrapStyle: 0
 ScaledBorderAndShadow: yes
 YCbCr Matrix: TV.601
-PlayResX: 1920
-PlayResY: 1080
+PlayResX: {play_res_x}
+PlayResY: {play_res_y}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 """
+    # Khmer fonts installed on Windows + standard fallback
+    default_khmer_fonts = "Kantumruy Pro, Kantumruy, Khmer OS Siemreap, Leelawadee UI, Segoe UI, Arial"
+    chosen_font = font_name if font_name else default_khmer_fonts
+    
+    # Scale default font size if vertical portrait resolution
+    is_portrait = play_res_y > play_res_x
+    base_font_scale = 1.15 if is_portrait else 1.0
+
+    size_my = font_size or int(52 * base_font_scale)
+    p_col_my = primary_color or "&H0000FFFF"
+    o_col_my = outline_color or "&H00000000"
+    size_bd = font_size or int(48 * base_font_scale)
+    p_col_bd = primary_color or "&H00FFFFFF"
+    o_col_bd = outline_color or "&H00000000"
+    size_cw = font_size or int(50 * base_font_scale)
+    p_col_cw = primary_color or "&H00FFFFFF"
+    o_col_cw = outline_color or "&H00000000"
+
+    margin_v = 90 if is_portrait else 55
+
     # Style definitions
     # ASS Hex colors: &HAABBGGRR (Alpha, Blue, Green, Red)
     if style_preset == "modern_yellow":
-        style_line = "Style: Default,Arial,52,&H0000FFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,40,40,55,1"
+        style_line = f"Style: Default,{chosen_font},{size_my},{p_col_my},&H000000FF,{o_col_my},&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,40,40,{margin_v},1"
     elif style_preset == "box_dark":
-        style_line = "Style: Default,Segoe UI,48,&H00FFFFFF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,3,2,1,2,30,30,50,1"
+        style_line = f"Style: Default,{chosen_font},{size_bd},{p_col_bd},&H000000FF,{o_col_bd},&H90000000,-1,0,0,0,100,100,0,0,3,2,1,2,30,30,{margin_v},1"
     else: # classic_white
-        style_line = "Style: Default,Arial,50,&H00FFFFFF,&H000000FF,&H00000000,&H60000000,-1,0,0,0,100,100,0,0,1,3,2,2,40,40,50,1"
+        style_line = f"Style: Default,{chosen_font},{size_cw},{p_col_cw},&H000000FF,{o_col_cw},&H60000000,-1,0,0,0,100,100,0,0,1,3,2,2,40,40,{margin_v},1"
 
     body = [header, style_line, "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
     for item in items:
@@ -219,4 +249,3 @@ def auto_fix_overlaps(items: List[SubtitleItem], min_gap: float = 0.05) -> List[
             item.end_time = round(item.start_time + 1.0, 3)
         fixed.append(item)
     return fixed
-

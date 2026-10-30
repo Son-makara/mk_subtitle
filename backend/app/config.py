@@ -1,7 +1,11 @@
 import os
 import sys
 import shutil
+import subprocess
 from pathlib import Path
+
+# Subprocess creation flags (CREATE_NO_WINDOW on Windows to prevent flashing console popups)
+SUBPROCESS_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
 
 # Base Paths (supports development and frozen PyInstaller .exe mode)
 if getattr(sys, 'frozen', False):

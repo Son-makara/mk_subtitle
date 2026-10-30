@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { FileText, Users, Volume2, Loader2, AlertCircle } from 'lucide-react';
+import { FileText, Users, Volume2, Loader2, AlertCircle, Languages, Sparkles } from 'lucide-react';
 import { formatTime } from '../utils/time_formatter';
 
 export default function SubtitleDataTable({
@@ -11,7 +11,10 @@ export default function SubtitleDataTable({
   currentTime,
   onSeekTime,
   onPlayAudioItem,
-  playingAudioId
+  playingAudioId,
+  onTranslateClick,
+  onOpenTranslateModal,
+  isTranslating
 }) {
   const lastSelectedIndexRef = useRef(null);
 
@@ -69,10 +72,12 @@ export default function SubtitleDataTable({
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: '8px',
-          padding: '0 4px'
+          padding: '0 4px',
+          gap: '12px',
+          flexWrap: 'wrap'
         }}
       >
-        {/* Title */}
+        {/* Title & Stats */}
         <div
           style={{
             fontSize: '14px',
@@ -84,37 +89,114 @@ export default function SubtitleDataTable({
           }}
         >
           <FileText size={16} /> Subtitle Data
+          {subtitles.length > 0 && (
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400 }}>
+              ({subtitles.length} lines{selectedIds.length > 0 && selectedIds.length < subtitles.length ? ` • ${selectedIds.length} selected` : ''})
+            </span>
+          )}
         </div>
 
-        {/* Set All Voices */}
+        {/* Right Side Actions: Google Translate & Voice Selection */}
         {subtitles.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-            <span
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Google Translate Button Group */}
+            <div
               style={{
-                color: 'var(--text-muted)',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '4px'
+                borderRadius: '6px',
+                overflow: 'hidden',
+                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.3)'
               }}
             >
-              <Users size={14} /> Set all voices to:
-            </span>
-            <button
-              onClick={() => onSetAllVoices('Male')}
-              className="btn-secondary"
-              style={{ padding: '2px 10px', fontSize: '11px', color: '#818cf8', borderColor: '#334155' }}
-              title="Set all voice profiles to Male"
-            >
-              Male
-            </button>
-            <button
-              onClick={() => onSetAllVoices('Female')}
-              className="btn-secondary"
-              style={{ padding: '2px 10px', fontSize: '11px', color: '#f472b6', borderColor: '#334155' }}
-              title="Set all voice profiles to Female"
-            >
-              Female
-            </button>
+              <button
+                onClick={() => onTranslateClick && onTranslateClick()}
+                disabled={isTranslating}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: isTranslating ? '#1d4ed8' : '#2563eb',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: isTranslating ? 'not-allowed' : 'pointer',
+                  opacity: isTranslating ? 0.75 : 1,
+                  transition: 'background-color 0.15s ease'
+                }}
+                title={
+                  selectedIds.length > 0 && selectedIds.length < subtitles.length
+                    ? `Translate ${selectedIds.length} selected lines to Khmer`
+                    : 'Translate all subtitles to Khmer with Google Translate'
+                }
+              >
+                {isTranslating ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Languages size={13} />
+                )}
+                {isTranslating
+                  ? 'Translating...'
+                  : selectedIds.length > 0 && selectedIds.length < subtitles.length
+                  ? `Translate Selected (${selectedIds.length})`
+                  : 'Google Translate to Khmer'}
+              </button>
+
+              {/* Advanced Translation Options (AIModal) */}
+              {onOpenTranslateModal && (
+                <button
+                  onClick={onOpenTranslateModal}
+                  disabled={isTranslating}
+                  style={{
+                    padding: '5px 8px',
+                    fontSize: '11px',
+                    backgroundColor: isTranslating ? '#1e40af' : '#1d4ed8',
+                    color: '#bfdbfe',
+                    border: 'none',
+                    borderLeft: '1px solid rgba(255, 255, 255, 0.2)',
+                    cursor: isTranslating ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Advanced AI Translation Settings (Gemini API & Languages)"
+                >
+                  <Sparkles size={12} />
+                </button>
+              )}
+            </div>
+
+            {/* Set All Voices */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', marginLeft: '4px' }}>
+              <span
+                style={{
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px'
+                }}
+              >
+                <Users size={13} /> Set voices:
+              </span>
+              <button
+                onClick={() => onSetAllVoices('Male')}
+                className="btn-secondary"
+                style={{ padding: '2px 8px', fontSize: '10px', color: '#818cf8', borderColor: '#334155' }}
+                title="Set all voice profiles to Male"
+              >
+                Male
+              </button>
+              <button
+                onClick={() => onSetAllVoices('Female')}
+                className="btn-secondary"
+                style={{ padding: '2px 8px', fontSize: '10px', color: '#f472b6', borderColor: '#334155' }}
+                title="Set all voice profiles to Female"
+              >
+                Female
+              </button>
+            </div>
           </div>
         )}
       </div>

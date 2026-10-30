@@ -22,23 +22,32 @@ async def translate_text_google_free(text: str, source_lang: str = "auto", targe
     """Translates text using Google's public translation endpoint without API key"""
     if not text.strip():
         return ""
-    try:
-        url = "https://translate.googleapis.com/translate_a/single"
-        params = {
-            "client": "gtx",
-            "sl": source_lang if source_lang != "auto" else "auto",
-            "tl": target_lang,
-            "dt": "t",
-            "q": text
-        }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url, params=params)
-            if resp.status_code == 200:
-                data = resp.json()
-                translated_segments = [seg[0] for seg in data[0] if seg[0]]
-                return "".join(translated_segments)
-    except Exception as e:
-        print(f"Error in google free translation: {e}")
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+    sl = source_lang if source_lang and source_lang != "auto" else "auto"
+
+    for client_name in ["dict-chrome-ex", "gtx"]:
+        try:
+            url = "https://translate.googleapis.com/translate_a/single"
+            params = {
+                "client": client_name,
+                "sl": sl,
+                "tl": target_lang,
+                "dt": "t",
+                "q": text
+            }
+            async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
+                resp = await client.get(url, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    translated_segments = [seg[0] for seg in data[0] if seg and seg[0]]
+                    if translated_segments:
+                        return "".join(translated_segments)
+        except Exception:
+            continue
+
     return text
 
 async def translate_batch_google_free(
@@ -115,4 +124,3 @@ Respond ONLY with valid JSON in this exact structure:
         print(f"Gemini translation failed: {e}. Falling back to Google free translate.")
 
     return await translate_batch_google_free(items, source_lang, target_lang)
-

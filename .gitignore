@@ -6,9 +6,13 @@ __pycache__/
 venv/
 .venv/
 
+# Build & Packaging (PyInstaller & Vite)
+build/
+dist/
+*.spec
+
 # Node
 node_modules/
-dist/
 
 # Storage
 storage/uploads/*

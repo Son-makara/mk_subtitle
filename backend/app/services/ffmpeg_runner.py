@@ -3,9 +3,9 @@ import json
 import uuid
 import subprocess
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
-from ..config import UPLOADS_DIR, EXPORTS_DIR, AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH, BASE_DIR
+from ..config import UPLOADS_DIR, EXPORTS_DIR, AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH, BASE_DIR, SUBPROCESS_FLAGS
 from ..models.subtitle import VideoBurnRequest
 from .subtitle_parser import export_ass
 from .audio_mixer import build_dubbed_audio_track
@@ -22,22 +22,58 @@ def probe_video(file_path: Path) -> Dict[str, Any]:
             "-show_streams",
             str(file_path)
         ]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+            creationflags=SUBPROCESS_FLAGS
+        )
         data = json.loads(result.stdout)
         
         duration = float(data.get("format", {}).get("duration", 0.0))
         video_stream = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), None)
         audio_stream = next((s for s in data.get("streams", []) if s.get("codec_type") == "audio"), None)
-        
+
+        # Fallback duration from stream if format duration missing
+        if duration <= 0.0:
+            if video_stream and "duration" in video_stream:
+                try:
+                    duration = float(video_stream["duration"])
+                except (ValueError, TypeError):
+                    pass
+            elif audio_stream and "duration" in audio_stream:
+                try:
+                    duration = float(audio_stream["duration"])
+                except (ValueError, TypeError):
+                    pass
+
         width = int(video_stream.get("width", 1920)) if video_stream else 1920
         height = int(video_stream.get("height", 1080)) if video_stream else 1080
         
+        fps_val = 30.0
+        if video_stream:
+            r_fr = video_stream.get("r_frame_rate", "")
+            if "/" in r_fr:
+                num, den = r_fr.split("/")
+                if float(den) > 0:
+                    fps_val = round(float(num) / float(den), 2)
+            elif r_fr:
+                try:
+                    fps_val = round(float(r_fr), 2)
+                except ValueError:
+                    pass
+
         return {
             "duration": round(duration, 3),
             "width": width,
             "height": height,
             "has_audio": audio_stream is not None,
-            "codec": video_stream.get("codec_name", "unknown") if video_stream else "none"
+            "codec": video_stream.get("codec_name", "unknown") if video_stream else "none",
+            "fps": fps_val,
+            "audio_sample_rate": int(audio_stream.get("sample_rate", 44100)) if audio_stream else 44100,
+            "audio_channels": int(audio_stream.get("channels", 2)) if audio_stream else 2
         }
     except Exception as e:
         print(f"Probe video failed: {e}")
@@ -45,43 +81,53 @@ def probe_video(file_path: Path) -> Dict[str, Any]:
 
 def render_and_burn_video(req: VideoBurnRequest) -> str:
     """
-    Renders video with burned-in subtitles and optional dubbed audio track.
-    Utilizes AMD AMF GPU encoding with automatic CPU fallback.
+    Renders video with burned-in subtitles and optional dubbed audio track and background music.
+    Utilizes AMD AMF GPU encoding (h264_amf) with automatic, seamless CPU fallback (libx264).
     """
     video_path = resolve_media_file(req.video_filename)
-
     probe = probe_video(video_path)
-    total_dur = probe.get("duration", 10.0)
 
-    # 1. Generate temp ASS file
-    ass_content = export_ass(
-        req.items,
-        use_translated=req.use_translation,
-        style_preset=req.subtitle_style
-    )
+    # Calculate video duration safely
+    max_sub_time = max((it.end_time for it in req.items), default=5.0) if req.items else 5.0
+    total_dur = probe.get("duration", 0.0)
+    if total_dur <= 0.05:
+        total_dur = max_sub_time
+
     temp_id = uuid.uuid4().hex[:8]
     temp_ass_path = AUDIO_CACHE_DIR / f"temp_{temp_id}.ass"
-    with open(temp_ass_path, "w", encoding="utf-8") as f:
-        f.write(ass_content)
 
-    # Prepare export path
+    # 1. Generate temp ASS file if subtitles present
+    has_subtitles = bool(req.items)
+    if has_subtitles:
+        ass_content = export_ass(
+            items=req.items,
+            use_translated=req.use_translation,
+            style_preset=req.subtitle_style,
+            font_name=req.font_name,
+            font_size=req.font_size,
+            primary_color=req.primary_color,
+            outline_color=req.outline_color,
+            play_res_x=probe.get("width", 1920),
+            play_res_y=probe.get("height", 1080)
+        )
+        with open(temp_ass_path, "w", encoding="utf-8") as f:
+            f.write(ass_content)
+
     export_filename = f"mk_sub_{Path(req.video_filename).stem}_{temp_id}.mp4"
     export_path = EXPORTS_DIR / export_filename
 
-    # Format path for FFmpeg filter (escape colons and backslashes for Windows)
-    ass_filter_path = str(temp_ass_path).replace("\\", "/").replace(":", "\\:")
-    vf_filter = f"subtitles='{ass_filter_path}'"
+    # Format path for FFmpeg subtitles filter on Windows (escaped colons and backslashes)
+    ass_filter_path = str(temp_ass_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+    vf_subtitles = f"subtitles='{ass_filter_path}'"
 
     # 2. Check if dubbing audio is requested
     dubbed_audio_path = None
-    if req.include_dubbing:
+    if req.include_dubbing and req.items:
         has_dubbing_items = any(it.audio_url for it in req.items)
         if has_dubbing_items:
             dubbed_audio_path = build_dubbed_audio_track(req.items, total_dur)
 
-    # 3. Assemble FFmpeg command
-    cmd = [FFMPEG_PATH, "-y", "-i", str(video_path)]
-
+    # 3. Check BGM path
     bgm_path = None
     if req.bgm_filename:
         for possible in [AUDIO_CACHE_DIR / req.bgm_filename, UPLOADS_DIR / req.bgm_filename]:
@@ -89,144 +135,182 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
                 bgm_path = str(possible)
                 break
 
-    # Check if logo watermark is requested
+    # 4. Check Watermark Logo
     logo_path = BASE_DIR / "assets" / "logo.png"
     has_watermark = req.add_logo_watermark and logo_path.exists()
-    logo_idx = None
+
+    # Build input list and track stream indexes accurately
+    cmd_inputs = ["-i", str(video_path)]
+    in_idx_counter = 0
+
+    video_in = in_idx_counter  # 0
+
+    logo_in = None
     if has_watermark:
-        cmd.extend(["-i", str(logo_path)])
-        logo_idx = len(cmd) - 2
+        in_idx_counter += 1
+        logo_in = in_idx_counter
+        cmd_inputs.extend(["-i", str(logo_path)])
 
-    def build_video_filter() -> str:
-        if has_watermark:
-            return f"[0:v]{vf_filter}[vsub];[{logo_idx}:v]scale=90:-1[logo];[vsub][logo]overlay=W-w-20:20[vout]"
-        return f"[0:v]{vf_filter}[vout]"
+    dubbed_in = None
+    if dubbed_audio_path:
+        in_idx_counter += 1
+        dubbed_in = in_idx_counter
+        cmd_inputs.extend(["-i", str(dubbed_audio_path)])
 
-    # Determine if original video audio should be kept
+    bgm_in = None
+    if bgm_path:
+        in_idx_counter += 1
+        bgm_in = in_idx_counter
+        cmd_inputs.extend(["-stream_loop", "-1", "-i", str(bgm_path)])
+
+    # Construct Filter Complex
+    filter_chains = []
+
+    # --- Video chain ---
+    if has_subtitles and temp_ass_path.exists():
+        filter_chains.append(f"[{video_in}:v]{vf_subtitles}[vsub]")
+        current_v = "[vsub]"
+    else:
+        current_v = f"[{video_in}:v]"
+
+    if logo_in is not None:
+        filter_chains.append(f"[{logo_in}:v]scale=90:-1[logo]")
+        filter_chains.append(f"{current_v}[logo]overlay=W-w-20:20[vout]")
+    else:
+        filter_chains.append(f"{current_v}null[vout]")
+
+    # --- Audio chain ---
+    has_orig_audio = probe.get("has_audio", False)
     keep_original_audio = (
         not req.mute_original_audio
-        and probe.get("has_audio", False)
+        and has_orig_audio
         and req.background_ducking_volume > 0.01
     )
 
-    if dubbed_audio_path:
-        cmd.extend(["-i", dubbed_audio_path])
-        if bgm_path:
-            cmd.extend(["-stream_loop", "-1", "-i", bgm_path])
-            # 0:v, 0:a (orig), 1:a (dubbed), 2:a (bgm)
-            if keep_original_audio:
-                duck_filter = f"[0:a]volume={req.background_ducking_volume}[ducked];[2:a]volume={req.bgm_volume}[bgmv];[ducked][1:a][bgmv]amix=inputs=3:duration=first[aout]"
-            else:
-                duck_filter = f"[2:a]volume={req.bgm_volume}[bgmv];[1:a][bgmv]amix=inputs=2:duration=first[aout]"
-            cmd.extend([
-                "-filter_complex", f"{build_video_filter()};{duck_filter}",
-                "-map", "[vout]",
-                "-map", "[aout]"
-            ])
-        else:
-            if keep_original_audio:
-                # Duck original audio (stream 0:a) to background volume, and mix with dubbing (stream 1:a)
-                duck_filter = f"[0:a]volume={req.background_ducking_volume}[ducked];[ducked][1:a]amix=inputs=2:duration=first[aout]"
-                cmd.extend([
-                    "-filter_complex", f"{build_video_filter()};{duck_filter}",
-                    "-map", "[vout]",
-                    "-map", "[aout]"
-                ])
-            else:
-                # Pure dubbing audio track (Original speech 100% removed!)
-                if has_watermark:
-                    cmd.extend([
-                        "-filter_complex", build_video_filter(),
-                        "-map", "[vout]",
-                        "-map", "1:a"
-                    ])
-                else:
-                    cmd.extend([
-                        "-vf", vf_filter,
-                        "-map", "0:v",
-                        "-map", "1:a"
-                    ])
-    elif bgm_path:
-        cmd.extend(["-stream_loop", "-1", "-i", bgm_path])
-        if keep_original_audio:
-            mix_filter = f"[0:a]volume={req.background_ducking_volume}[orig];[1:a]volume={req.bgm_volume}[bgmv];[orig][bgmv]amix=inputs=2:duration=first[aout]"
-            cmd.extend([
-                "-filter_complex", f"{build_video_filter()};{mix_filter}",
-                "-map", "[vout]",
-                "-map", "[aout]"
-            ])
-        else:
-            # Pure BGM audio track (Original speech 100% removed!)
-            cmd.extend([
-                "-filter_complex", f"{build_video_filter()};[1:a]volume={req.bgm_volume}[aout]",
-                "-map", "[vout]",
-                "-map", "[aout]"
-            ])
-    else:
-        if has_watermark:
-            cmd.extend([
-                "-filter_complex", build_video_filter(),
-                "-map", "[vout]"
-            ])
-            if req.mute_original_audio:
-                cmd.append("-an")
-            else:
-                cmd.extend(["-map", "0:a?"])
-        else:
-            if req.mute_original_audio:
-                # Subtitle burn with original audio completely stripped
-                cmd.extend([
-                    "-vf", vf_filter,
-                    "-map", "0:v",
-                    "-an"
-                ])
-            else:
-                # Standard subtitle burn preserving original audio
-                cmd.extend([
-                    "-vf", vf_filter,
-                    "-map", "0:v",
-                    "-map", "0:a?"
-                ])
+    audio_mapping = None
 
-    # 4. Encoding settings (AMD AMF or CPU)
-    if req.use_amf_gpu:
-        cmd.extend([
-            "-c:v", "h264_amf",
-            "-quality", "speed",
-            "-rc", "cbr",
-            "-b:v", "6M",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            str(export_path)
-        ])
+    if dubbed_in is not None and bgm_in is not None:
+        if keep_original_audio:
+            filter_chains.append(
+                f"[{video_in}:a]volume={req.background_ducking_volume}[ducked];"
+                f"[{bgm_in}:a]volume={req.bgm_volume}[bgmv];"
+                f"[ducked][{dubbed_in}:a][bgmv]amix=inputs=3:duration=first[aout]"
+            )
+        else:
+            filter_chains.append(
+                f"[{bgm_in}:a]volume={req.bgm_volume}[bgmv];"
+                f"[{dubbed_in}:a][bgmv]amix=inputs=2:duration=first[aout]"
+            )
+        audio_mapping = "[aout]"
+
+    elif dubbed_in is not None and bgm_in is None:
+        if keep_original_audio:
+            filter_chains.append(
+                f"[{video_in}:a]volume={req.background_ducking_volume}[ducked];"
+                f"[ducked][{dubbed_in}:a]amix=inputs=2:duration=first[aout]"
+            )
+            audio_mapping = "[aout]"
+        else:
+            filter_chains.append(
+                f"[{dubbed_in}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[aout]"
+            )
+            audio_mapping = "[aout]"
+
+    elif dubbed_in is None and bgm_in is not None:
+        if keep_original_audio:
+            filter_chains.append(
+                f"[{video_in}:a]volume={req.background_ducking_volume}[orig];"
+                f"[{bgm_in}:a]volume={req.bgm_volume}[bgmv];"
+                f"[orig][bgmv]amix=inputs=2:duration=first[aout]"
+            )
+            audio_mapping = "[aout]"
+        else:
+            filter_chains.append(
+                f"[{bgm_in}:a]volume={req.bgm_volume}[aout]"
+            )
+            audio_mapping = "[aout]"
+
     else:
-        cmd.extend([
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "22",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            str(export_path)
-        ])
+        # Neither dubbing nor BGM
+        if req.mute_original_audio or not has_orig_audio:
+            audio_mapping = "-an"
+        else:
+            audio_mapping = f"{video_in}:a?"
+
+    # Assemble complete ffmpeg command
+    base_cmd = [FFMPEG_PATH, "-y", *cmd_inputs]
+    full_filter_str = ";".join(filter_chains)
+    base_cmd.extend(["-filter_complex", full_filter_str])
+    base_cmd.extend(["-map", "[vout]"])
+
+    if audio_mapping == "-an":
+        base_cmd.append("-an")
+    elif audio_mapping == "[aout]":
+        base_cmd.extend(["-map", "[aout]"])
+    else:
+        base_cmd.extend(["-map", audio_mapping])
+
+    # End at video duration when looping BGM
+    if bgm_in is not None:
+        base_cmd.append("-shortest")
+
+    def get_encode_flags(use_amf: bool) -> List[str]:
+        if use_amf:
+            return [
+                "-c:v", "h264_amf",
+                "-quality", "speed",
+                "-rc", "cbr",
+                "-b:v", "6M",
+                "-pix_fmt", "yuv420p",
+                "-threads", "0",
+                "-c:a", "aac",
+                "-b:a", "192k"
+            ]
+        else:
+            return [
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "22",
+                "-pix_fmt", "yuv420p",
+                "-threads", "0",
+                "-c:a", "aac",
+                "-b:a", "192k"
+            ]
 
     # Run FFmpeg render
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if proc.returncode != 0:
-            print(f"AMF render returned non-zero code, attempting fallback to libx264... Error was: {proc.stderr[:300]}")
-            # Fallback to standard libx264
-            cmd_fallback = cmd.copy()
-            idx = cmd_fallback.index("-c:v")
-            cmd_fallback[idx + 1] = "libx264"
-            # Remove AMF specific flags
-            for flag in ["-quality", "-rc", "-b:v"]:
-                if flag in cmd_fallback:
-                    f_idx = cmd_fallback.index(flag)
-                    del cmd_fallback[f_idx:f_idx+2]
-            # Add crf
-            cmd_fallback.insert(idx + 2, "-crf")
-            cmd_fallback.insert(idx + 3, "22")
-            subprocess.run(cmd_fallback, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        if req.use_amf_gpu:
+            full_cmd = [*base_cmd, *get_encode_flags(True), str(export_path)]
+            proc = subprocess.run(
+                full_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=SUBPROCESS_FLAGS
+            )
+            if proc.returncode != 0:
+                print(f"AMF render returned non-zero code ({proc.returncode}), attempting automatic fallback to libx264...")
+                fallback_cmd = [*base_cmd, *get_encode_flags(False), str(export_path)]
+                fb_proc = subprocess.run(
+                    fallback_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    creationflags=SUBPROCESS_FLAGS
+                )
+                if fb_proc.returncode != 0:
+                    raise RuntimeError(f"FFmpeg CPU fallback render failed: {fb_proc.stderr[-600:]}")
+        else:
+            full_cmd = [*base_cmd, *get_encode_flags(False), str(export_path)]
+            proc = subprocess.run(
+                full_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=SUBPROCESS_FLAGS
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(f"FFmpeg render failed: {proc.stderr[-600:]}")
     finally:
         # Clean up temp ASS file
         if temp_ass_path.exists():
@@ -236,4 +320,3 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
                 pass
 
     return export_filename
-
