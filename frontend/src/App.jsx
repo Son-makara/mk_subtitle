@@ -24,9 +24,15 @@ import SubtitleDataTable from './components/SubtitleDataTable';
 import TimelineEditor from './components/TimelineEditor';
 import AIModal from './components/AIModal';
 import ExportModal from './components/ExportModal';
+import VideoQueueSidebar from './components/VideoQueueSidebar';
 import { formatTime } from './utils/time_formatter';
 
 export default function App() {
+  // Multi-Video Queue State
+  const [videoQueue, setVideoQueue] = useState([]);
+  const [activeVideoId, setActiveVideoId] = useState(null);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+
   // Pure Clean State - Zero Hardcoded Demo Data
   const [subtitles, setSubtitles] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -172,33 +178,330 @@ export default function App() {
     }
   };
 
-  // Video Upload Handler
-  const handleVideoUpload = async (file) => {
+  // Multi-Video Upload Handler (Batch & Single)
+  const handleUploadVideos = async (files) => {
+    if (!files || files.length === 0) return;
+
     setIsProcessing(true);
-    setStatusMessage('Uploading video...');
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/upload/video', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      if (data.url) {
-        setVideoUrl(data.url);
-        setVideoServerFilename(data.filename);
-        setVideoFilename(data.name || data.filename);
-        if (data.metadata?.duration) {
-          setVideoDuration(data.metadata.duration);
+    setStatusMessage(`Queuing ${files.length} video(s)...`);
+
+    const newItems = files.map((file, idx) => ({
+      id: `vid_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
+      name: file.name,
+      file: file,
+      url: null,
+      serverFilename: '',
+      duration: 0,
+      status: 'uploading',
+      progress: 15,
+      subtitles: [],
+      bgmUrl: null,
+      bgmFilename: null,
+      exportResult: null
+    }));
+
+    setVideoQueue((prev) => [...prev, ...newItems]);
+
+    for (let i = 0; i < newItems.length; i++) {
+      const item = newItems[i];
+      try {
+        setStatusMessage(`Uploading (${i + 1}/${newItems.length}): ${item.name}...`);
+        const formData = new FormData();
+        formData.append('file', item.file);
+
+        const res = await fetch('/api/upload/video', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!res.ok) {
+          throw new Error(`Upload returned status ${res.status}`);
         }
-        await fetchStorageUsage();
+
+        const data = await res.json();
+        const duration = data.metadata?.duration || 0;
+
+        setVideoQueue((prev) =>
+          prev.map((v) =>
+            v.id === item.id
+              ? {
+                  ...v,
+                  url: data.url,
+                  serverFilename: data.filename,
+                  name: data.name || data.filename,
+                  duration: duration,
+                  status: 'idle',
+                  progress: 0
+                }
+              : v
+          )
+        );
+
+        // If no video is active, make the first uploaded video active
+        setActiveVideoId((currActive) => {
+          if (!currActive) {
+            setVideoUrl(data.url);
+            setVideoFilename(data.name || data.filename);
+            setVideoServerFilename(data.filename);
+            setVideoDuration(duration);
+            setSubtitles([]);
+            setSelectedIds([]);
+            setCurrentTime(0);
+            return item.id;
+          }
+          return currActive;
+        });
+      } catch (err) {
+        console.error(`Upload failed for ${item.name}:`, err);
+        setVideoQueue((prev) =>
+          prev.map((v) =>
+            v.id === item.id
+              ? { ...v, status: 'error', errorMessage: err.message }
+              : v
+          )
+        );
       }
-    } catch (err) {
-      alert(`Video upload failed: ${err.message}`);
-    } finally {
-      setIsProcessing(false);
-      setStatusMessage('');
     }
+
+    await fetchStorageUsage();
+    setIsProcessing(false);
+    setStatusMessage('');
+  };
+
+  const handleVideoUpload = async (file) => {
+    if (file) handleUploadVideos([file]);
+  };
+
+  // Switch Active Video from Queue
+  const handleSelectVideo = (targetId) => {
+    if (targetId === activeVideoId) return;
+
+    // 1. Save current active video state back into videoQueue
+    if (activeVideoId) {
+      setVideoQueue((prev) =>
+        prev.map((v) =>
+          v.id === activeVideoId
+            ? { ...v, subtitles, bgmUrl, bgmFilename }
+            : v
+        )
+      );
+    }
+
+    // 2. Pause currently playing audio / video
+    stopVideo();
+    audioSyncCache.current = {};
+
+    // 3. Find and switch to target video
+    const target = videoQueue.find((v) => v.id === targetId);
+    if (!target) return;
+
+    setActiveVideoId(targetId);
+    setVideoUrl(target.url);
+    setVideoFilename(target.name);
+    setVideoServerFilename(target.serverFilename);
+    setVideoDuration(target.duration || 0);
+    setSubtitles(target.subtitles || []);
+    setSelectedIds((target.subtitles || []).map((s) => s.id));
+    setBgmUrl(target.bgmUrl || null);
+    setBgmFilename(target.bgmFilename || null);
+    setCurrentTime(0);
+  };
+
+  // Sync subtitle changes to active item in videoQueue
+  useEffect(() => {
+    if (activeVideoId) {
+      setVideoQueue((prev) =>
+        prev.map((v) =>
+          v.id === activeVideoId ? { ...v, subtitles } : v
+        )
+      );
+    }
+  }, [subtitles, activeVideoId]);
+
+  // Remove single video from queue
+  const handleRemoveVideo = (idToRemove) => {
+    setVideoQueue((prev) => {
+      const filtered = prev.filter((v) => v.id !== idToRemove);
+      if (activeVideoId === idToRemove) {
+        if (filtered.length > 0) {
+          const next = filtered[0];
+          setActiveVideoId(next.id);
+          setVideoUrl(next.url);
+          setVideoFilename(next.name);
+          setVideoServerFilename(next.serverFilename);
+          setVideoDuration(next.duration || 0);
+          setSubtitles(next.subtitles || []);
+          setSelectedIds((next.subtitles || []).map((s) => s.id));
+          setBgmUrl(next.bgmUrl || null);
+          setBgmFilename(next.bgmFilename || null);
+          setCurrentTime(0);
+        } else {
+          stopVideo();
+          setActiveVideoId(null);
+          setVideoUrl(null);
+          setVideoFilename('');
+          setVideoServerFilename('');
+          setVideoDuration(0);
+          setSubtitles([]);
+          setSelectedIds([]);
+          setBgmUrl(null);
+          setBgmFilename(null);
+          setCurrentTime(0);
+        }
+      }
+      return filtered;
+    });
+  };
+
+  // Clear entire queue
+  const handleClearQueue = () => {
+    if (window.confirm('Clear all videos in the queue?')) {
+      stopVideo();
+      setVideoQueue([]);
+      setActiveVideoId(null);
+      setSubtitles([]);
+      setSelectedIds([]);
+      setVideoUrl(null);
+      setVideoFilename('');
+      setVideoServerFilename('');
+      setVideoDuration(0);
+      setBgmUrl(null);
+      setBgmFilename(null);
+      setCurrentTime(0);
+      audioSyncCache.current = {};
+    }
+  };
+
+  // Batch Auto-Pilot: Sequentially Transcribe, Translate, and Dub all queued videos
+  const handleBatchProcessAll = async () => {
+    if (isBatchProcessing || videoQueue.length === 0) return;
+
+    setIsBatchProcessing(true);
+    setStatusMessage('Starting Batch Auto-Pilot for queued videos...');
+
+    for (let i = 0; i < videoQueue.length; i++) {
+      const currentItem = videoQueue[i];
+
+      // Skip already completed videos that already have subtitles
+      if (currentItem.status === 'completed' && currentItem.subtitles && currentItem.subtitles.length > 0) {
+        continue;
+      }
+
+      const vidName = currentItem.name || currentItem.serverFilename;
+      setStatusMessage(`[Batch ${i + 1}/${videoQueue.length}] Transcribing ${vidName}...`);
+
+      // 1. Mark as transcribing
+      setVideoQueue((prev) =>
+        prev.map((v) =>
+          v.id === currentItem.id
+            ? { ...v, status: 'transcribing', progress: 30 }
+            : v
+        )
+      );
+
+      try {
+        // A. Whisper Speech-to-Text with auto Khmer translation & voice pitch detection
+        const sttRes = await fetch('/api/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            video_filename: currentItem.serverFilename || currentItem.name,
+            model_size: 'base',
+            language: null,
+            auto_translate_to_khmer: true
+          })
+        });
+
+        if (!sttRes.ok) {
+          throw new Error(`Whisper STT returned error ${sttRes.status}`);
+        }
+
+        const sttData = await sttRes.json();
+        let items = (sttData.items || []).map((it) => ({
+          ...it,
+          gender: it.gender || 'Female',
+          audio_status: 'idle',
+          speed: 1.0,
+          translated_text: it.translated_text || null
+        }));
+
+        if (items.length === 0) {
+          setVideoQueue((prev) =>
+            prev.map((v) =>
+              v.id === currentItem.id
+                ? { ...v, status: 'completed', progress: 100, subtitles: [] }
+                : v
+            )
+          );
+          continue;
+        }
+
+        // B. Generate Edge-TTS Dubbing with pitch-matched voices & time-stretch
+        setStatusMessage(`[Batch ${i + 1}/${videoQueue.length}] Generating Dubbed Audio for ${vidName}...`);
+        setVideoQueue((prev) =>
+          prev.map((v) =>
+            v.id === currentItem.id
+              ? { ...v, status: 'dubbing', progress: 65, subtitles: items }
+              : v
+          )
+        );
+
+        const ttsRes = await fetch('/api/tts/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: items,
+            default_voice: 'km-KH-PisethNeural',
+            target_field: 'translated_text',
+            speed_stretch_fit: true
+          })
+        });
+
+        if (ttsRes.ok) {
+          const ttsData = await ttsRes.json();
+          if (ttsData.items && ttsData.items.length > 0) {
+            items = ttsData.items;
+          }
+        }
+
+        // C. Mark completed with items
+        setVideoQueue((prev) =>
+          prev.map((v) =>
+            v.id === currentItem.id
+              ? {
+                  ...v,
+                  status: 'completed',
+                  progress: 100,
+                  subtitles: items
+                }
+              : v
+          )
+        );
+
+        // If this item is currently active on the workspace, update active subtitles
+        setActiveVideoId((currActive) => {
+          if (currActive === currentItem.id) {
+            setSubtitles(items);
+            setSelectedIds(items.map((it) => it.id));
+          }
+          return currActive;
+        });
+
+      } catch (err) {
+        console.error(`Batch processing failed on ${vidName}:`, err);
+        setVideoQueue((prev) =>
+          prev.map((v) =>
+            v.id === currentItem.id
+              ? { ...v, status: 'error', errorMessage: err.message }
+              : v
+          )
+        );
+      }
+    }
+
+    setIsBatchProcessing(false);
+    setStatusMessage('Batch Auto-Pilot completed!');
+    setTimeout(() => setStatusMessage(''), 3000);
   };
 
   // BGM Audio Upload Handler
@@ -518,6 +821,8 @@ export default function App() {
   const handleClearAllData = async () => {
     if (window.confirm('Are you sure you want to clear all video, subtitle, and temporary audio data?')) {
       stopVideo();
+      setVideoQueue([]);
+      setActiveVideoId(null);
       setSubtitles([]);
       setSelectedIds([]);
       setVideoUrl(null);
@@ -527,6 +832,7 @@ export default function App() {
       setBgmUrl(null);
       setBgmFilename(null);
       setCurrentTime(0);
+      audioSyncCache.current = {};
       await handlePurgeStorage(true);
     }
   };
@@ -692,9 +998,21 @@ export default function App() {
         overflow: 'hidden'
       }}
     >
-      {/* Main Studio Body: Left Sidebar + Right Subtitle Table */}
+      {/* Main Studio Body: Video Queue Sidebar + Video Player & Tools + Subtitle Table */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
-        {/* Left Sidebar: Video Player & Workspace Tools */}
+        {/* 1. Far-Left Multi-Video Queue Sidebar */}
+        <VideoQueueSidebar
+          queue={videoQueue}
+          activeVideoId={activeVideoId}
+          onSelectVideo={handleSelectVideo}
+          onUploadVideos={handleUploadVideos}
+          onRemoveVideo={handleRemoveVideo}
+          onClearQueue={handleClearQueue}
+          onBatchProcessAll={handleBatchProcessAll}
+          isBatchProcessing={isBatchProcessing}
+        />
+
+        {/* 2. Middle Column: Video Player & Workspace Tools */}
         <div
           style={{
             width: '320px',
@@ -839,11 +1157,12 @@ export default function App() {
                 >
                   <input
                     type="file"
+                    multiple
                     accept="video/*"
                     style={{ display: 'none' }}
                     onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleVideoUpload(e.target.files[0]);
+                      if (e.target.files && e.target.files.length > 0) {
+                        handleUploadVideos(Array.from(e.target.files));
                       }
                     }}
                   />
@@ -852,16 +1171,16 @@ export default function App() {
                       width: '52px',
                       height: '52px',
                       borderRadius: '50%',
-                      backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                      backgroundColor: 'rgba(239, 68, 68, 0.15)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: 'var(--accent-text)'
+                      color: '#ef4444'
                     }}
                   >
                     <Film size={26} />
                   </div>
-                  <span style={{ fontSize: '12px', fontWeight: 500 }}>Click to Load Video</span>
+                  <span style={{ fontSize: '12px', fontWeight: 500 }}>Click or Drop Video(s)</span>
                 </label>
               )}
             </div>
