@@ -26,11 +26,20 @@ export default function TimelineEditor({
 
   const duration = Math.max(totalDuration || 45.10, 10);
 
-  // Time ruler ticks calculation
+  // Time ruler ticks calculation (adaptive for short clips up to 1h+ full movies)
   const getRulerTicks = () => {
-    const tickInterval = zoom >= 400 ? 1 : zoom >= 200 ? 2 : 5;
+    let tickInterval = 5;
+    if (duration > 3600) {
+      tickInterval = zoom >= 400 ? 15 : zoom >= 200 ? 30 : 60;
+    } else if (duration > 1200) {
+      tickInterval = zoom >= 400 ? 5 : zoom >= 200 ? 15 : 30;
+    } else if (duration > 300) {
+      tickInterval = zoom >= 400 ? 2 : zoom >= 200 ? 5 : 10;
+    } else {
+      tickInterval = zoom >= 400 ? 1 : zoom >= 200 ? 2 : 5;
+    }
     const ticks = [];
-    for (let t = 0; t <= duration + 5; t += tickInterval) {
+    for (let t = 0; t <= duration + tickInterval; t += tickInterval) {
       ticks.push(t);
     }
     return ticks;
