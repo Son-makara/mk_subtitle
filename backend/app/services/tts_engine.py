@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import uuid
 import subprocess
@@ -8,6 +9,8 @@ from typing import List, Dict, Any, Optional
 
 from ..config import AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH, SUBPROCESS_FLAGS
 from ..models.subtitle import SubtitleItem
+
+CHINESE_CHAR_REGEX = re.compile(r'[\u4e00-\u9fff]')
 
 # Curated popular voices with readable labels
 CURATED_VOICES = [
@@ -199,19 +202,54 @@ async def generate_batch_tts(
         volume = getattr(req, "volume", volume)
         auto_fit = getattr(req, "auto_fit", auto_fit)
 
+    # 1. If translation is enabled, ensure any items without translated_text get translated to Khmer first!
+    if use_translation:
+        untranslated = [
+            it for it in items
+            if not (it.translated_text and str(it.translated_text).strip())
+            and (it.text and str(it.text).strip())
+        ]
+        if untranslated:
+            try:
+                from .translator import translate_batch_google_free
+                print(f"Notice: auto-translating {len(untranslated)} items to Khmer before generating Edge-TTS speech...")
+                translated = await translate_batch_google_free(
+                    items=untranslated,
+                    source_lang="auto",
+                    target_lang="km"
+                )
+                lookup = {it.id: it.translated_text for it in translated if it.translated_text}
+                for it in items:
+                    if it.id in lookup and not it.translated_text:
+                        it.translated_text = lookup[it.id]
+            except Exception as trans_err:
+                print(f"Notice: pre-TTS translation error: {trans_err}")
+
     sem = asyncio.Semaphore(6) # Run up to 6 parallel edge-tts connections
 
     async def process_item(item: SubtitleItem):
         async with sem:
-            speech_text = (item.translated_text if (use_translation and item.translated_text) else item.text) or ""
-            if not speech_text.strip():
-                item.audio_status = "idle"
-                return item
-
             # Pick voice based on item gender if specific voice not overridden
             selected_voice = voice
             if not selected_voice:
                 selected_voice = voice_male if item.gender == "Male" else voice_female
+
+            speech_text = (item.translated_text if (use_translation and item.translated_text) else item.text) or ""
+
+            # Safety fallback: If target voice is Khmer (km-KH) but text has Chinese characters that cause Edge-TTS to abort
+            if "km-KH" in (selected_voice or "") and CHINESE_CHAR_REGEX.search(speech_text):
+                try:
+                    from .translator import translate_text_google_free
+                    translated_kh = await translate_text_google_free(speech_text, source_lang="auto", target_lang="km")
+                    if translated_kh and translated_kh.strip():
+                        speech_text = translated_kh
+                        item.translated_text = translated_kh
+                except Exception as t_err:
+                    print(f"Notice: single fallback translation error: {t_err}")
+
+            if not speech_text.strip():
+                item.audio_status = "idle"
+                return item
 
             sub_duration = max(item.end_time - item.start_time, 0.5)
             custom_spd = item.speed if (item.speed and abs(item.speed - 1.0) > 0.05) else None

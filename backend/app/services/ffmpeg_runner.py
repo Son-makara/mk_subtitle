@@ -215,10 +215,17 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
 
     # --- Audio chain ---
     has_orig_audio = probe.get("has_audio", False)
+    has_dubbed_voice = (dubbed_in is not None)
+
+    # When dubbed voice is present, original audio can be ducked or muted.
+    # When NO Khmer dubbed voice is present, original video audio/music is ALWAYS preserved (not muted).
     keep_original_audio = (
-        not req.mute_original_audio
-        and has_orig_audio
-        and req.background_ducking_volume > 0.01
+        has_orig_audio
+        and (
+            (not req.mute_original_audio and req.background_ducking_volume > 0.01)
+            if has_dubbed_voice
+            else True
+        )
     )
 
     audio_mapping = None
@@ -251,9 +258,9 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
             audio_mapping = "[aout]"
 
     elif dubbed_in is None and bgm_in is not None:
-        if keep_original_audio:
+        if has_orig_audio:
             filter_chains.append(
-                f"[{video_in}:a]volume={req.background_ducking_volume}[orig];"
+                f"[{video_in}:a]volume=1.0[orig];"
                 f"[{bgm_in}:a]volume={req.bgm_volume}[bgmv];"
                 f"[orig][bgmv]amix=inputs=2:duration=first[aout]"
             )
@@ -265,11 +272,11 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
             audio_mapping = "[aout]"
 
     else:
-        # Neither dubbing nor BGM
-        if req.mute_original_audio or not has_orig_audio:
-            audio_mapping = "-an"
-        else:
+        # Neither dubbing nor BGM: Preserve original audio and music (never mute if original audio exists)
+        if has_orig_audio:
             audio_mapping = f"{video_in}:a?"
+        else:
+            audio_mapping = "-an"
 
     # Assemble complete ffmpeg command
     base_cmd = [FFMPEG_PATH, "-y", "-progress", "pipe:1", *cmd_inputs]

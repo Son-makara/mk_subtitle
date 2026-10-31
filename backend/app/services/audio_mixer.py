@@ -6,7 +6,7 @@ from typing import List, Optional
 import numpy as np
 import soundfile as sf
 
-from ..config import AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH, SUBPROCESS_FLAGS
+from ..config import AUDIO_CACHE_DIR, UPLOADS_DIR, FFMPEG_PATH, FFPROBE_PATH, SUBPROCESS_FLAGS
 from ..models.subtitle import SubtitleItem
 
 def build_dubbed_audio_track(
@@ -31,6 +31,12 @@ def build_dubbed_audio_track(
             clean_url = str(it.audio_url).split("?")[0]
             fname = Path(clean_url).name
             fpath = AUDIO_CACHE_DIR / fname
+            if not fpath.exists():
+                if (UPLOADS_DIR / fname).exists():
+                    fpath = UPLOADS_DIR / fname
+                elif Path(clean_url).exists():
+                    fpath = Path(clean_url)
+
             if fpath.exists():
                 start_sec = it.audio_start if (it.audio_start is not None) else it.start_time
                 dur = it.audio_duration or 2.0
@@ -41,22 +47,8 @@ def build_dubbed_audio_track(
     final_duration = max(total_duration, max_audio_end, 1.0)
 
     if not audio_items:
-        # Create silent track of final_duration
-        cmd = [
-            FFMPEG_PATH, "-y",
-            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-            "-t", str(final_duration),
-            "-c:a", "aac",
-            str(output_path)
-        ]
-        subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-            creationflags=SUBPROCESS_FLAGS
-        )
-        return str(output_path)
+        # No actual audio files found to mix; return None so caller knows there is no dubbed voice
+        return None
 
     # For large numbers of clips (e.g. 1-hour video with hundreds of lines),
     # use direct high-speed numpy mixing to avoid Windows 32KB command line limits.

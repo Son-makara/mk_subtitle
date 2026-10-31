@@ -351,6 +351,7 @@ async def tts_single_item(req: TTSGenerateItemRequest):
         raise HTTPException(status_code=500, detail=f"TTS error: {str(e)}")
 
 @app.post("/api/tts/generate-batch")
+@app.post("/api/tts/batch")
 async def tts_batch(req: TTSBatchRequest):
     try:
         updated_items = await generate_batch_tts(
@@ -377,6 +378,25 @@ async def get_render_progress_endpoint(job_id: str):
 @app.post("/api/render/burn")
 async def burn_video_endpoint(req: VideoBurnRequest, background_tasks: BackgroundTasks):
     try:
+        # Extra safety check: if dubbing is requested, make sure all items have valid audio on disk!
+        if req.include_dubbing and req.items:
+            def audio_file_exists(it):
+                if not it.audio_url:
+                    return False
+                fname = Path(str(it.audio_url).split("?")[0]).name
+                return (AUDIO_CACHE_DIR / fname).exists() or (UPLOADS_DIR / fname).exists()
+
+            missing_audio_items = [it for it in req.items if not audio_file_exists(it)]
+            if missing_audio_items:
+                print(f"Notice: include_dubbing=True but {len(missing_audio_items)}/{len(req.items)} items lack audio on disk. Auto-generating Edge-TTS...")
+                generated = await generate_batch_tts(
+                    items=missing_audio_items,
+                    use_translation=req.use_translation,
+                    auto_fit=True
+                )
+                gen_lookup = {it.id: it for it in generated}
+                req.items = [gen_lookup.get(it.id, it) for it in req.items]
+
         # Run render non-blockingly in background threadpool to keep server fast and smooth
         export_filename = await asyncio.to_thread(render_and_burn_video, req)
         return {

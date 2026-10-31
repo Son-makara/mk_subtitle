@@ -18,7 +18,7 @@ from backend.app.services.tts_engine import (
 from backend.app.services.translator import translate_text_google_free
 from backend.app.models.subtitle import VideoBurnRequest
 from backend.app.services.ffmpeg_runner import render_and_burn_video, probe_video
-from backend.app.config import UPLOADS_DIR, FFMPEG_PATH
+from backend.app.config import UPLOADS_DIR, EXPORTS_DIR, FFMPEG_PATH
 import subprocess
 
 SAMPLE_SRT = """1
@@ -83,6 +83,8 @@ async def run_tests():
     rendered_file = render_and_burn_video(burn_req)
     print(f"Rendered video: {rendered_file}")
     assert rendered_file.endswith(".mp4")
+    rendered_info = probe_video(EXPORTS_DIR / rendered_file)
+    assert rendered_info.get("has_audio") is True, "Original video audio/music must NOT be muted when rendered without Khmer voice!"
 
     print("\n✅ ALL TESTS PASSED!")
 

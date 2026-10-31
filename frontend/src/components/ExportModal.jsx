@@ -9,12 +9,20 @@ export default function ExportModal({
   onRenderBurn,
   onSaveRenderedVideo,
   isProcessing,
-  downloadResult
+  downloadResult,
+  subtitles = []
 }) {
   const [subFormat, setSubFormat] = useState('srt');
   const [useTranslation, setUseTranslation] = useState(true);
 
-  // Burn options
+  // Check if any subtitle item has Khmer TTS voice generated
+  const hasKhmerVoice = React.useMemo(() => {
+    return Boolean(
+      subtitles && subtitles.some((s) => s.audio_url || s.audio_status === 'ready')
+    );
+  }, [subtitles]);
+
+  // Burn options: Default dubbing and muting enabled by default
   const [stylePreset, setStylePreset] = useState('modern_yellow');
   const [includeDubbing, setIncludeDubbing] = useState(true);
   const [muteOriginalAudio, setMuteOriginalAudio] = useState(true);
@@ -22,6 +30,17 @@ export default function ExportModal({
   const [useAmfGpu, setUseAmfGpu] = useState(true);
   const [addLogoWatermark, setAddLogoWatermark] = useState(false);
   const [autoPurgeCache, setAutoPurgeCache] = useState(true);
+
+  const handleDubbingToggle = (e) => {
+    const checked = e.target.checked;
+    setIncludeDubbing(checked);
+    if (!checked) {
+      // When dubbed audio is turned off, do NOT mute original video audio
+      setMuteOriginalAudio(false);
+    } else {
+      setMuteOriginalAudio(true);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -250,29 +269,56 @@ export default function ExportModal({
                     Burn translated subtitles (Khmer)
                   </label>
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '13px',
+                      cursor: 'pointer'
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={includeDubbing}
-                      onChange={(e) => setIncludeDubbing(e.target.checked)}
+                      onChange={handleDubbingToggle}
                       style={{ accentColor: 'var(--accent-primary)' }}
                     />
-                    Include dubbed audio track (TTS voiceover)
+                    <span>Include dubbed audio track (Khmer AI TTS voiceover)</span>
+                    {hasKhmerVoice ? (
+                      <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
+                        ✓ Voice ready
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 500 }}>
+                        🎙️ Auto-generate AI voice during render
+                      </span>
+                    )}
                   </label>
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '13px',
+                      cursor: includeDubbing ? 'pointer' : 'not-allowed',
+                      opacity: includeDubbing ? 1 : 0.6
+                    }}
+                  >
                     <input
                       type="checkbox"
-                      checked={muteOriginalAudio}
+                      checked={includeDubbing && muteOriginalAudio}
+                      disabled={!includeDubbing}
                       onChange={(e) => setMuteOriginalAudio(e.target.checked)}
                       style={{ accentColor: 'var(--accent-primary)', width: '15px', height: '15px' }}
                     />
-                    <span style={{ fontWeight: 600, color: muteOriginalAudio ? '#34d399' : 'var(--text-primary)' }}>
+                    <span style={{ fontWeight: 600, color: (includeDubbing && muteOriginalAudio) ? '#34d399' : 'var(--text-primary)' }}>
                       Remove original video voice (100% clean dubbing + BGM)
                     </span>
                   </label>
 
-                  {muteOriginalAudio ? (
+                  {includeDubbing && muteOriginalAudio ? (
                     <div
                       style={{
                         padding: '6px 12px',
@@ -283,25 +329,42 @@ export default function ExportModal({
                         color: '#6ee7b7'
                       }}
                     >
-                      ✓ Original foreign dialogue will be completely muted. Output plays only your new Khmer voiceover and loaded BGM.
+                      ✓ Original foreign dialogue will be completely muted. Output plays only your new Khmer AI voiceover and loaded BGM.
+                    </div>
+                  ) : includeDubbing && !muteOriginalAudio ? (
+                    <div style={{ paddingLeft: '24px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Background Audio Ducking:</span>
+                        <span>{duckingVol}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="50"
+                        value={duckingVol}
+                        onChange={(e) => setDuckingVol(parseInt(e.target.value))}
+                        style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                      />
                     </div>
                   ) : (
-                    includeDubbing && (
-                      <div style={{ paddingLeft: '24px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>Background Audio Ducking:</span>
-                          <span>{duckingVol}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="50"
-                          value={duckingVol}
-                          onChange={(e) => setDuckingVol(parseInt(e.target.value))}
-                          style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
-                        />
-                      </div>
-                    )
+                    <div
+                      style={{
+                        padding: '8px 12px',
+                        backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        color: '#93c5fd',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <span>ℹ️</span>
+                      <span>
+                        Dubbing track disabled: Original video audio and music will NOT be muted.
+                      </span>
+                    </div>
                   )}
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
@@ -338,7 +401,7 @@ export default function ExportModal({
                         subtitle_style: stylePreset,
                         use_translation: useTranslation,
                         include_dubbing: includeDubbing,
-                        mute_original_audio: muteOriginalAudio,
+                        mute_original_audio: includeDubbing ? muteOriginalAudio : false,
                         add_logo_watermark: addLogoWatermark,
                         background_ducking_volume: duckingVol / 100,
                         use_amf_gpu: useAmfGpu

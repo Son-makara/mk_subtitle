@@ -19,15 +19,18 @@ import {
   CheckCircle2,
   FolderOpen,
   FolderCheck,
-  RefreshCw
+  RefreshCw,
+  Sliders
 } from 'lucide-react';
 
 import SubtitleDataTable from './components/SubtitleDataTable';
 import TimelineEditor from './components/TimelineEditor';
 import AIModal from './components/AIModal';
 import ExportModal from './components/ExportModal';
+import SettingsModal from './components/SettingsModal';
 import VideoQueueSidebar from './components/VideoQueueSidebar';
 import { formatTime } from './utils/time_formatter';
+import { getStoredTheme, getStoredAccent, applyTheme } from './utils/theme';
 
 export default function App() {
   // Multi-Video Queue State
@@ -96,6 +99,15 @@ export default function App() {
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportType, setExportType] = useState('burn');
   const [burnResult, setBurnResult] = useState(null);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+
+  // Theme & Accent State with LocalStorage Persistence
+  const [currentTheme, setCurrentTheme] = useState(() => getStoredTheme());
+  const [currentAccent, setCurrentAccent] = useState(() => getStoredAccent());
+
+  useEffect(() => {
+    applyTheme(currentTheme, currentAccent);
+  }, [currentTheme, currentAccent]);
 
   // One-Click Zero-Popup Render State
   const [isRendering, setIsRendering] = useState(false);
@@ -394,88 +406,98 @@ export default function App() {
     }
   };
 
-  // Batch Auto-Pilot: Sequentially Transcribe, Translate, and Dub all queued videos
-  const handleBatchProcessAll = async () => {
+  // Batch Auto-Pilot: Sequentially Transcribe, Translate, and Dub queued videos
+  const handleBatchProcessAll = async (targetIds = null) => {
     if (isBatchProcessing || videoQueue.length === 0) return;
 
+    // Filter queue to targetIds if specified (from tick boxes), or all items in queue
+    const idsToRun = Array.isArray(targetIds) && targetIds.length > 0
+      ? targetIds
+      : videoQueue.map((v) => v.id);
+
+    const itemsToProcess = videoQueue.filter((v) => idsToRun.includes(v.id));
+    if (itemsToProcess.length === 0) {
+      alert('Please check at least one video tick box in the queue to run.');
+      return;
+    }
+
     setIsBatchProcessing(true);
-    setStatusMessage('Starting Batch Auto-Pilot for queued videos...');
+    setStatusMessage(`Starting Batch Auto-Pilot for ${itemsToProcess.length} videos...`);
 
-    for (let i = 0; i < videoQueue.length; i++) {
-      const currentItem = videoQueue[i];
+    for (let i = 0; i < itemsToProcess.length; i++) {
+      const currentItem = itemsToProcess[i];
+      const vidName = currentItem.name || currentItem.serverFilename;
 
-      // Skip already completed videos that already have subtitles
-      if (currentItem.status === 'completed' && currentItem.subtitles && currentItem.subtitles.length > 0) {
+      let items = currentItem.subtitles || [];
+      const hasSubtitles = items.length > 0;
+      const hasVoice = hasSubtitles && items.some((it) => it.audio_url || it.audio_status === 'ready');
+
+      // If user selected this video and it ALREADY has both subtitles and dubbed audio, skip to save time
+      if (hasSubtitles && hasVoice) {
         continue;
       }
 
-      const vidName = currentItem.name || currentItem.serverFilename;
-      setStatusMessage(`[Batch ${i + 1}/${videoQueue.length}] Transcribing ${vidName}...`);
-
-      // 1. Mark as transcribing
-      setVideoQueue((prev) =>
-        prev.map((v) =>
-          v.id === currentItem.id
-            ? { ...v, status: 'transcribing', progress: 30 }
-            : v
-        )
-      );
-
       try {
-        // A. Whisper Speech-to-Text with auto Khmer translation & voice pitch detection
-        const sttRes = await fetch('/api/transcribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            video_filename: currentItem.serverFilename || currentItem.name,
-            model_size: 'base',
-            language: null,
-            auto_translate_to_khmer: true
-          })
-        });
+        // Step A: Whisper Speech-to-Text with auto Khmer translation (only if not yet transcribed)
+        if (!hasSubtitles) {
+          setStatusMessage(`[Batch ${i + 1}/${itemsToProcess.length}] Transcribing ${vidName}...`);
+          setVideoQueue((prev) =>
+            prev.map((v) =>
+              v.id === currentItem.id ? { ...v, status: 'transcribing', progress: 30 } : v
+            )
+          );
 
-        if (!sttRes.ok) {
-          throw new Error(`Whisper STT returned error ${sttRes.status}`);
+          const sttRes = await fetch('/api/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              video_filename: currentItem.serverFilename || currentItem.name,
+              model_size: 'base',
+              language: null,
+              auto_translate_to_khmer: true
+            })
+          });
+
+          if (!sttRes.ok) {
+            throw new Error(`Whisper STT returned error ${sttRes.status}`);
+          }
+
+          const sttData = await sttRes.json();
+          items = (sttData.items || []).map((it) => ({
+            ...it,
+            gender: it.gender || 'Female',
+            audio_status: 'idle',
+            speed: 1.0,
+            translated_text: it.translated_text || null
+          }));
         }
-
-        const sttData = await sttRes.json();
-        let items = (sttData.items || []).map((it) => ({
-          ...it,
-          gender: it.gender || 'Female',
-          audio_status: 'idle',
-          speed: 1.0,
-          translated_text: it.translated_text || null
-        }));
 
         if (items.length === 0) {
           setVideoQueue((prev) =>
             prev.map((v) =>
-              v.id === currentItem.id
-                ? { ...v, status: 'completed', progress: 100, subtitles: [] }
-                : v
+              v.id === currentItem.id ? { ...v, status: 'completed', progress: 100, subtitles: [] } : v
             )
           );
           continue;
         }
 
-        // B. Generate Edge-TTS Dubbing with pitch-matched voices & time-stretch
-        setStatusMessage(`[Batch ${i + 1}/${videoQueue.length}] Generating Dubbed Audio for ${vidName}...`);
+        // Step B: Generate Edge-TTS Dubbing with pitch-matched voices & time-stretch
+        setStatusMessage(`[Batch ${i + 1}/${itemsToProcess.length}] Generating Dubbed Audio for ${vidName}...`);
         setVideoQueue((prev) =>
           prev.map((v) =>
-            v.id === currentItem.id
-              ? { ...v, status: 'dubbing', progress: 65, subtitles: items }
-              : v
+            v.id === currentItem.id ? { ...v, status: 'dubbing', progress: 65, subtitles: items } : v
           )
         );
 
-        const ttsRes = await fetch('/api/tts/batch', {
+        const ttsRes = await fetch('/api/tts/generate-batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             items: items,
-            default_voice: 'km-KH-PisethNeural',
-            target_field: 'translated_text',
-            speed_stretch_fit: true
+            use_translation: true,
+            voice_male: 'km-KH-PisethNeural',
+            voice_female: 'km-KH-SreymomNeural',
+            auto_fit: true
           })
         });
 
@@ -486,7 +508,7 @@ export default function App() {
           }
         }
 
-        // C. Mark completed with items
+        // Step C: Mark completed with items
         setVideoQueue((prev) =>
           prev.map((v) =>
             v.id === currentItem.id
@@ -1027,7 +1049,7 @@ export default function App() {
   };
 
   // One-Click Render with Real-Time Progress (%) and Native Save As Location Picker
-  const handleOneClickRender = async () => {
+  const handleOneClickRender = async (customOptions = null) => {
     const filename = videoServerFilename || videoFilename;
     if (!videoUrl || !filename) {
       setRenderToast({ type: 'error', message: 'Please select or upload a video first.' });
@@ -1069,15 +1091,61 @@ export default function App() {
         }
       }, 350);
 
+      const isCustomObject = customOptions && typeof customOptions === 'object' && !customOptions.nativeEvent;
+      const wantDubbing = isCustomObject && customOptions.include_dubbing !== undefined
+        ? Boolean(customOptions.include_dubbing)
+        : true; // Default to dubbing enabled
+      const wantMuteOriginal = isCustomObject && customOptions.mute_original_audio !== undefined
+        ? Boolean(customOptions.mute_original_audio)
+        : true;
+
+      let renderItems = subtitles;
+      let hasKhmerVoice = renderItems.some((s) => s.audio_url || s.audio_status === 'ready');
+
+      // Auto-generate Khmer voice if dubbing is requested but subtitles have no audio yet
+      if (wantDubbing && !hasKhmerVoice && renderItems.length > 0) {
+        setStatusMessage('Generating Khmer neural voiceover for subtitles...');
+        setRenderToast({ type: 'info', message: '🎙️ Generating Khmer voiceover...' });
+        try {
+          const ttsRes = await fetch('/api/tts/generate-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              items: renderItems,
+              use_translation: isCustomObject && customOptions.use_translation !== undefined ? customOptions.use_translation : true,
+              voice_male: 'km-KH-PisethNeural',
+              voice_female: 'km-KH-SreymomNeural',
+              auto_fit: true
+            })
+          });
+          if (ttsRes.ok) {
+            const ttsData = await ttsRes.json();
+            if (ttsData.items && ttsData.items.length > 0) {
+              renderItems = ttsData.items;
+              setSubtitles(renderItems);
+              hasKhmerVoice = renderItems.some((s) => s.audio_url || s.audio_status === 'ready');
+            }
+          }
+        } catch (ttsErr) {
+          console.warn('Auto TTS generation error:', ttsErr);
+        }
+      }
+
       const smartOptions = {
         subtitle_style: 'modern_yellow',
         use_translation: true,
-        include_dubbing: subtitles.some((s) => s.audio_file),
-        mute_original_audio: isAudioMutedToggle || Boolean(cleanBgmUrl),
+        include_dubbing: wantDubbing,
+        mute_original_audio: wantDubbing ? wantMuteOriginal : false,
         add_logo_watermark: false,
         background_ducking_volume: 0.25,
-        use_amf_gpu: true
+        use_amf_gpu: true,
+        ...(isCustomObject ? customOptions : {})
       };
+
+      // Safeguard: if dubbing is explicitly turned off by the user, never mute original video audio
+      if (!smartOptions.include_dubbing) {
+        smartOptions.mute_original_audio = false;
+      }
 
       const res = await fetch('/api/render/burn', {
         method: 'POST',
@@ -1086,7 +1154,7 @@ export default function App() {
           video_filename: filename,
           custom_output_filename: videoFilename || filename,
           job_id: jobId,
-          items: subtitles,
+          items: renderItems,
           bgm_filename: cleanBgmFilename || bgmFilename,
           ...smartOptions
         })
@@ -1228,6 +1296,7 @@ export default function App() {
           onClearQueue={handleClearQueue}
           onBatchProcessAll={handleBatchProcessAll}
           isBatchProcessing={isBatchProcessing}
+          onOpenSettings={() => setSettingsModalOpen(true)}
         />
 
         {/* 2. Middle Column: Video Player & Workspace Tools (Full-Space, Zero Scroll) */}
@@ -1632,70 +1701,96 @@ export default function App() {
                 </div>
               )}
 
-              {/* ONE-CLICK ZERO-POPUP RENDER BUTTON */}
-              <button
-                onClick={handleOneClickRender}
-                disabled={isRendering || !videoUrl || subtitles.length === 0}
-                style={{
-                  position: 'relative',
-                  overflow: 'hidden',
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: isRendering || !videoUrl || subtitles.length === 0 ? 'not-allowed' : 'pointer',
-                  opacity: !videoUrl || subtitles.length === 0 ? 0.5 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  background: isRendering
-                    ? '#1e3a8a'
-                    : lastRenderedVideo
-                    ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
-                    : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                  color: '#ffffff',
-                  boxShadow: isRendering ? 'none' : '0 4px 12px rgba(239, 68, 68, 0.3)',
-                  transition: 'all 0.15s ease'
-                }}
-                title="Render video directly with AMD AMF GPU encoding and prompt for save location"
-              >
-                {/* Live percentage fill bar overlay */}
-                {isRendering && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                      width: `${renderProgress}%`,
-                      backgroundColor: 'rgba(59, 130, 246, 0.75)',
-                      transition: 'width 0.3s ease',
-                      zIndex: 0
-                    }}
-                  />
-                )}
-                <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {isRendering ? (
-                    <>
-                      <RefreshCw size={14} className="animate-spin" />
-                      <span>Rendering AMF GPU ({renderProgress}%)...</span>
-                    </>
-                  ) : lastRenderedVideo ? (
-                    <>
-                      <CheckCircle2 size={15} />
-                      <span>Render Again (One-Click)</span>
-                    </>
-                  ) : (
-                    <>
-                      <Flame size={15} />
-                      <span>One-Click Render Video</span>
-                    </>
+              {/* ONE-CLICK ZERO-POPUP RENDER BUTTON + ADVANCED MODAL BUTTON */}
+              <div style={{ display: 'flex', gap: '6px', width: '100%' }}>
+                <button
+                  onClick={() => handleOneClickRender()}
+                  disabled={isRendering || !videoUrl || subtitles.length === 0}
+                  style={{
+                    position: 'relative',
+                    overflow: 'hidden',
+                    flex: 1,
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: isRendering || !videoUrl || subtitles.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: !videoUrl || subtitles.length === 0 ? 0.5 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    background: isRendering
+                      ? '#1e3a8a'
+                      : lastRenderedVideo
+                      ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+                      : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                    color: '#ffffff',
+                    boxShadow: isRendering ? 'none' : '0 4px 12px rgba(239, 68, 68, 0.3)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Render video directly with AMD AMF GPU encoding and prompt for save location"
+                >
+                  {/* Live percentage fill bar overlay */}
+                  {isRendering && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: `${renderProgress}%`,
+                        backgroundColor: 'rgba(59, 130, 246, 0.75)',
+                        transition: 'width 0.3s ease',
+                        zIndex: 0
+                      }}
+                    />
                   )}
-                </div>
-              </button>
+                  <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {isRendering ? (
+                      <>
+                        <RefreshCw size={14} className="animate-spin" />
+                        <span>Rendering AMF GPU ({renderProgress}%)...</span>
+                      </>
+                    ) : lastRenderedVideo ? (
+                      <>
+                        <CheckCircle2 size={15} />
+                        <span>Render Again (One-Click)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Flame size={15} />
+                        <span>One-Click Render Video</span>
+                      </>
+                    )}
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setExportType('burn');
+                    setExportModalOpen(true);
+                  }}
+                  disabled={isRendering || !videoUrl || subtitles.length === 0}
+                  style={{
+                    padding: '10px 10px',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    color: 'var(--text-muted)',
+                    cursor: isRendering || !videoUrl || subtitles.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: !videoUrl || subtitles.length === 0 ? 0.5 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Advanced Render Settings (Subtitles style, Audio mixing, AMF GPU)"
+                >
+                  <Sliders size={15} />
+                </button>
+              </div>
 
               {/* Quick Actions after Render: Save to PC (Choose Location) & Open Folder */}
               {lastRenderedVideo && (
@@ -1893,6 +1988,18 @@ export default function App() {
         onSaveRenderedVideo={handleSaveRenderedVideo}
         isProcessing={isRendering || isProcessing}
         downloadResult={burnResult}
+        subtitles={subtitles}
+      />
+
+      <SettingsModal
+        isOpen={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        currentTheme={currentTheme}
+        onSelectTheme={(themeId) => setCurrentTheme(themeId)}
+        currentAccent={currentAccent}
+        onSelectAccent={(accentId) => setCurrentAccent(accentId)}
+        storageUsage={storageUsage}
+        onPurgeStorage={handlePurgeStorage}
       />
     </div>
   );

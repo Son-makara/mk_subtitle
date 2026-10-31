@@ -46,10 +46,16 @@ class TTSBatchRequest(BaseModel):
     use_translation: bool = True
     voice_male: str = "km-KH-PisethNeural"
     voice_female: str = "km-KH-SreymomNeural"
+    default_voice: Optional[str] = "km-KH-PisethNeural"
+    target_field: Optional[str] = "translated_text"
+    speed_stretch_fit: Optional[bool] = True
     rate: str = "+0%"
     pitch: str = "+0Hz"
     volume: str = "+0%"
     auto_fit: bool = True
+
+    class Config:
+        extra = "ignore"
 
 class TranslationRequest(BaseModel):
     items: List[SubtitleItem]
@@ -63,7 +69,7 @@ class VideoBurnRequest(BaseModel):
     items: List[SubtitleItem]
     use_translation: bool = True
     include_dubbing: bool = True
-    mute_original_audio: bool = True # Completely remove original video voice
+    mute_original_audio: bool = False # Mute original video audio only when dubbing with Khmer voice
     subtitle_style: str = "modern_yellow"
     font_name: str = "Kantumruy Pro"
     font_size: int = 22

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Film,
   Upload,
@@ -9,7 +9,8 @@ import {
   ChevronRight,
   Plus,
   RefreshCw,
-  Layers
+  Layers,
+  Settings
 } from 'lucide-react';
 import { formatTime } from '../utils/time_formatter';
 
@@ -21,10 +22,41 @@ export default function VideoQueueSidebar({
   onRemoveVideo,
   onClearQueue,
   onBatchProcessAll,
-  isBatchProcessing = false
+  isBatchProcessing = false,
+  onOpenSettings
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Tick box selection state for queue items
+  const [selectedQueueIds, setSelectedQueueIds] = useState(() => queue.map((v) => v.id));
+
+  // Sync selectedQueueIds when queue changes (keep checked and add newly uploaded items)
+  useEffect(() => {
+    setSelectedQueueIds((prev) => {
+      const validIds = new Set(queue.map((v) => v.id));
+      const preserved = prev.filter((id) => validIds.has(id));
+      const newIds = queue.map((v) => v.id).filter((id) => !prev.includes(id));
+      return [...preserved, ...newIds];
+    });
+  }, [queue]);
+
+  const isAllSelected = queue.length > 0 && selectedQueueIds.length === queue.length;
+  const isSomeSelected = selectedQueueIds.length > 0;
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedQueueIds([]);
+    } else {
+      setSelectedQueueIds(queue.map((v) => v.id));
+    }
+  };
+
+  const toggleSelectVideo = (id) => {
+    setSelectedQueueIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
   const handleFilesChosen = (e) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -65,18 +97,21 @@ export default function VideoQueueSidebar({
       lineHeight: 1.2
     };
 
+    const hasSubs = item.subtitles && item.subtitles.length > 0;
+    const hasVoice = hasSubs && item.subtitles.some((s) => s.audio_url || s.audio_status === 'ready');
+
     switch (item.status) {
       case 'completed':
         return (
           <span
             style={{
               ...badgeBase,
-              backgroundColor: 'rgba(16, 185, 129, 0.2)',
-              color: '#34d399',
-              border: '1px solid rgba(16, 185, 129, 0.3)'
+              backgroundColor: hasVoice ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+              color: hasVoice ? '#34d399' : '#fcd34d',
+              border: `1px solid ${hasVoice ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
             }}
           >
-            Done ✅
+            {hasVoice ? 'Voice Ready 🎙️' : 'Subs Ready 📝'}
           </span>
         );
       case 'transcribing':
@@ -159,15 +194,43 @@ export default function VideoQueueSidebar({
           </span>
         );
       default:
+        if (hasVoice) {
+          return (
+            <span
+              style={{
+                ...badgeBase,
+                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                color: '#34d399',
+                border: '1px solid rgba(16, 185, 129, 0.3)'
+              }}
+            >
+              Voice Ready 🎙️
+            </span>
+          );
+        }
+        if (hasSubs) {
+          return (
+            <span
+              style={{
+                ...badgeBase,
+                backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                color: '#fcd34d',
+                border: '1px solid rgba(245, 158, 11, 0.3)'
+              }}
+            >
+              Subs Only 📝
+            </span>
+          );
+        }
         return (
           <span
             style={{
               ...badgeBase,
               backgroundColor: '#374151',
-              color: '#cbd5e1'
+              color: '#9ca3af'
             }}
           >
-            Ready
+            Not yet run ⏳
           </span>
         );
     }
@@ -214,15 +277,15 @@ export default function VideoQueueSidebar({
       <aside
         style={{
           width: '50px',
-          backgroundColor: '#0e1422',
-          borderRight: '1px solid #1f2937',
+          backgroundColor: 'var(--bg-sidebar)',
+          borderRight: '1px solid var(--border-color)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           padding: '10px 0',
           gap: '10px',
           flexShrink: 0,
-          transition: 'width 0.2s ease',
+          transition: 'width 0.2s ease, background-color 0.2s ease',
           height: '100%',
           overflow: 'hidden'
         }}
@@ -233,9 +296,9 @@ export default function VideoQueueSidebar({
             width: '32px',
             height: '32px',
             borderRadius: '6px',
-            backgroundColor: '#1f2937',
-            border: '1px solid #374151',
-            color: '#cbd5e1',
+            backgroundColor: 'var(--bg-hover)',
+            border: '1px solid var(--border-light)',
+            color: 'var(--text-primary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -244,6 +307,25 @@ export default function VideoQueueSidebar({
           title="Expand Video Queue"
         >
           <ChevronRight size={16} />
+        </button>
+
+        <button
+          onClick={onOpenSettings}
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
+            backgroundColor: 'var(--bg-hover)',
+            border: '1px solid var(--border-light)',
+            color: 'var(--accent-text)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer'
+          }}
+          title="Studio Settings & Themes (ប្តូរ Theme)"
+        >
+          <Settings size={15} />
         </button>
 
         <button
@@ -274,7 +356,7 @@ export default function VideoQueueSidebar({
           onChange={handleFilesChosen}
         />
 
-        <div style={{ width: '24px', height: '1px', backgroundColor: '#1f2937', margin: '2px 0' }} />
+        <div style={{ width: '24px', height: '1px', backgroundColor: 'var(--border-color)', margin: '2px 0' }} />
 
         <div
           className="custom-scrollbar"
@@ -354,12 +436,12 @@ export default function VideoQueueSidebar({
     <aside
       style={{
         width: '270px',
-        backgroundColor: '#0e1422',
-        borderRight: '1px solid #1f2937',
+        backgroundColor: 'var(--bg-sidebar)',
+        borderRight: '1px solid var(--border-color)',
         display: 'flex',
         flexDirection: 'column',
         flexShrink: 0,
-        transition: 'width 0.2s ease',
+        transition: 'width 0.2s ease, background-color 0.2s ease',
         height: '100%',
         overflow: 'hidden'
       }}
@@ -368,15 +450,15 @@ export default function VideoQueueSidebar({
       <div
         style={{
           padding: '10px 12px',
-          borderBottom: '1px solid #1f2937',
+          borderBottom: '1px solid var(--border-color)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          backgroundColor: '#0b101c'
+          backgroundColor: 'var(--bg-panel)'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Layers size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
+          <Layers size={15} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
           <span
             style={{
               fontSize: '11px',
@@ -392,11 +474,11 @@ export default function VideoQueueSidebar({
             style={{
               fontSize: '10px',
               fontWeight: 700,
-              backgroundColor: '#1f2937',
-              color: '#cbd5e1',
+              backgroundColor: 'var(--bg-hover)',
+              color: 'var(--text-primary)',
               padding: '1px 6px',
               borderRadius: '10px',
-              border: '1px solid #374151'
+              border: '1px solid var(--border-light)'
             }}
           >
             {queue.length}
@@ -404,6 +486,25 @@ export default function VideoQueueSidebar({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button
+            onClick={onOpenSettings}
+            style={{
+              width: '26px',
+              height: '26px',
+              borderRadius: '6px',
+              backgroundColor: 'var(--bg-hover)',
+              border: '1px solid var(--border-light)',
+              color: 'var(--accent-text)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            title="Studio Settings & Themes (ប្តូរ Theme)"
+          >
+            <Settings size={13} />
+          </button>
           <button
             onClick={() => fileInputRef.current && fileInputRef.current.click()}
             style={{
@@ -429,9 +530,9 @@ export default function VideoQueueSidebar({
                 width: '26px',
                 height: '26px',
                 borderRadius: '6px',
-                backgroundColor: '#1f2937',
-                border: '1px solid #374151',
-                color: '#9ca3af',
+                backgroundColor: 'var(--bg-hover)',
+                border: '1px solid var(--border-light)',
+                color: 'var(--text-muted)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -448,9 +549,9 @@ export default function VideoQueueSidebar({
               width: '26px',
               height: '26px',
               borderRadius: '6px',
-              backgroundColor: '#1f2937',
-              border: '1px solid #374151',
-              color: '#9ca3af',
+              backgroundColor: 'var(--bg-hover)',
+              border: '1px solid var(--border-light)',
+              color: 'var(--text-muted)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -525,28 +626,60 @@ export default function VideoQueueSidebar({
           borderBottom: '1px solid #1f2937'
         }}
       >
-        <span>Processing: <strong style={{ color: '#e5e7eb' }}>Sequential (FIFO)</strong></span>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            cursor: queue.length === 0 ? 'not-allowed' : 'pointer',
+            userSelect: 'none'
+          }}
+          title={isAllSelected ? 'Deselect all videos' : 'Select all videos'}
+        >
+          <input
+            type="checkbox"
+            checked={isAllSelected}
+            disabled={queue.length === 0}
+            onChange={toggleSelectAll}
+            style={{
+              accentColor: '#ef4444',
+              cursor: queue.length === 0 ? 'not-allowed' : 'pointer',
+              width: '13px',
+              height: '13px'
+            }}
+          />
+          <span style={{ color: selectedQueueIds.length > 0 ? '#e5e7eb' : '#6b7280', fontWeight: 500 }}>
+            {selectedQueueIds.length === queue.length && queue.length > 0
+              ? `All (${queue.length})`
+              : `${selectedQueueIds.length}/${queue.length} selected`}
+          </span>
+        </label>
+
         <button
-          onClick={onBatchProcessAll}
-          disabled={isBatchProcessing || queue.length === 0}
+          onClick={() => onBatchProcessAll(selectedQueueIds)}
+          disabled={isBatchProcessing || queue.length === 0 || selectedQueueIds.length === 0}
           style={{
             fontSize: '11px',
             fontWeight: 600,
-            color: isBatchProcessing ? '#6b7280' : '#ef4444',
-            backgroundColor: 'transparent',
-            border: 'none',
-            cursor: isBatchProcessing || queue.length === 0 ? 'not-allowed' : 'pointer',
+            color: isBatchProcessing || selectedQueueIds.length === 0 ? '#6b7280' : '#ef4444',
+            backgroundColor: selectedQueueIds.length > 0 && !isBatchProcessing ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+            padding: '3px 8px',
+            borderRadius: '6px',
+            border: selectedQueueIds.length > 0 && !isBatchProcessing ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid transparent',
+            cursor: isBatchProcessing || queue.length === 0 || selectedQueueIds.length === 0 ? 'not-allowed' : 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px'
+            gap: '4px',
+            transition: 'all 0.15s ease'
           }}
+          title="Run Whisper STT, Khmer translation, and Edge-TTS Dubbing for selected videos"
         >
           {isBatchProcessing ? (
             <>
               <RefreshCw size={10} className="animate-spin" /> Processing...
             </>
           ) : (
-            'Run All ▶'
+            `Run ${selectedQueueIds.length === queue.length ? 'All' : 'Selected'} (${selectedQueueIds.length}) ▶`
           )}
         </button>
       </div>
@@ -585,6 +718,7 @@ export default function VideoQueueSidebar({
         ) : (
           queue.map((item) => {
             const isActive = item.id === activeVideoId;
+            const isChecked = selectedQueueIds.includes(item.id);
             const subCount = item.subtitles ? item.subtitles.length : 0;
             const formattedDuration = item.duration ? formatTime(item.duration).slice(3) : '--:--';
 
@@ -595,10 +729,19 @@ export default function VideoQueueSidebar({
                 style={{
                   padding: '8px 10px',
                   borderRadius: '8px',
-                  border: isActive ? '1px solid #ef4444' : '1px solid #1f2937',
-                  backgroundColor: isActive ? 'rgba(239, 68, 68, 0.12)' : 'rgba(17, 24, 39, 0.7)',
+                  border: isActive
+                    ? '1px solid #ef4444'
+                    : isChecked
+                    ? '1px solid rgba(239, 68, 68, 0.4)'
+                    : '1px solid #1f2937',
+                  backgroundColor: isActive
+                    ? 'rgba(239, 68, 68, 0.12)'
+                    : isChecked
+                    ? 'rgba(17, 24, 39, 0.85)'
+                    : 'rgba(17, 24, 39, 0.45)',
                   cursor: 'pointer',
-                  transition: 'all 0.15s ease'
+                  transition: 'all 0.15s ease',
+                  opacity: isChecked ? 1 : 0.65
                 }}
               >
                 <div
@@ -610,6 +753,25 @@ export default function VideoQueueSidebar({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                    {/* Tick box for selecting video to run */}
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleSelectVideo(item.id);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        accentColor: '#ef4444',
+                        cursor: 'pointer',
+                        width: '15px',
+                        height: '15px',
+                        flexShrink: 0
+                      }}
+                      title={isChecked ? 'Uncheck to skip in batch run' : 'Check to include in batch run'}
+                    />
+
                     <div
                       style={{
                         width: '26px',
@@ -631,7 +793,7 @@ export default function VideoQueueSidebar({
                         style={{
                           fontSize: '12px',
                           fontWeight: 600,
-                          color: isActive ? '#ffffff' : '#e5e7eb',
+                          color: isActive ? '#ffffff' : isChecked ? '#e5e7eb' : '#9ca3af',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap'

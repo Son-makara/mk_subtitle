@@ -1,8 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Kantumruy+Pro:wght@400;500;600;700&display=swap');
 
-:root {
+:root,
+[data-theme="midnight"] {
   --bg-base: #020617;
   --bg-panel: #0f172a;
+  --bg-sidebar: #0b101c;
+  --bg-sidebar-alt: #0e1422;
   --bg-hover: #1e293b;
   --border-color: #1e293b;
   --border-light: #334155;
@@ -10,10 +13,96 @@
   --text-primary: #cbd5e1;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
-  --accent-primary: #4f46e5;
-  --accent-text: #818cf8;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-khmer: 'Kantumruy Pro', 'Inter', sans-serif;
+}
+
+[data-theme="pure_black"] {
+  --bg-base: #000000;
+  --bg-panel: #09090b;
+  --bg-sidebar: #050505;
+  --bg-sidebar-alt: #0c0c0e;
+  --bg-hover: #18181b;
+  --border-color: #27272a;
+  --border-light: #3f3f46;
+  --text-bright: #ffffff;
+  --text-primary: #e4e4e7;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+}
+
+[data-theme="cyber_purple"] {
+  --bg-base: #0a0614;
+  --bg-panel: #130d24;
+  --bg-sidebar: #0e091b;
+  --bg-sidebar-alt: #160f2b;
+  --bg-hover: #21173d;
+  --border-color: #2a1b4e;
+  --border-light: #442d7a;
+  --text-bright: #faf5ff;
+  --text-primary: #e9d5ff;
+  --text-secondary: #c084fc;
+  --text-muted: #7e22ce;
+}
+
+[data-theme="warm_espresso"] {
+  --bg-base: #120e0d;
+  --bg-panel: #1c1615;
+  --bg-sidebar: #14100f;
+  --bg-sidebar-alt: #1f1817;
+  --bg-hover: #2b2220;
+  --border-color: #332725;
+  --border-light: #4d3c39;
+  --text-bright: #fefce8;
+  --text-primary: #f5eedc;
+  --text-secondary: #d6c7b2;
+  --text-muted: #8c786a;
+}
+
+[data-theme="deep_forest"] {
+  --bg-base: #06120e;
+  --bg-panel: #0b1e17;
+  --bg-sidebar: #081611;
+  --bg-sidebar-alt: #0e241c;
+  --bg-hover: #132f25;
+  --border-color: #1a3d31;
+  --border-light: #285a4a;
+  --text-bright: #f0fdf4;
+  --text-primary: #d1fae5;
+  --text-secondary: #6ee7b7;
+  --text-muted: #059669;
+}
+
+/* Accent Color Variations */
+:root,
+[data-accent="red"] {
+  --accent-primary: #ef4444;
+  --accent-text: #f87171;
+  --accent-glow: rgba(239, 68, 68, 0.25);
+}
+
+[data-accent="violet"] {
+  --accent-primary: #8b5cf6;
+  --accent-text: #a78bfa;
+  --accent-glow: rgba(139, 92, 246, 0.25);
+}
+
+[data-accent="cyan"] {
+  --accent-primary: #06b6d4;
+  --accent-text: #22d3ee;
+  --accent-glow: rgba(6, 182, 212, 0.25);
+}
+
+[data-accent="amber"] {
+  --accent-primary: #f59e0b;
+  --accent-text: #fbbf24;
+  --accent-glow: rgba(245, 158, 11, 0.25);
+}
+
+[data-accent="emerald"] {
+  --accent-primary: #10b981;
+  --accent-text: #34d399;
+  --accent-glow: rgba(16, 185, 129, 0.25);
 }
 
 * {
@@ -36,6 +125,7 @@ body {
   height: 100vh;
   overflow: hidden;
   user-select: none;
+  transition: background-color 0.2s ease, color 0.15s ease;
 }
 
 .font-khmer {
