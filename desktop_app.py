@@ -6,6 +6,14 @@ import threading
 import uvicorn
 import webview
 
+# Configure UTF-8 on Windows to safely handle non-ASCII video titles (Chinese, Khmer)
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Handle base path in both script and frozen (PyInstaller) mode
 if getattr(sys, "frozen", False):
     BASE_PATH = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
@@ -81,45 +89,58 @@ def build_standalone_exe():
         except Exception:
             pass
 
-    pyinstaller_cmd = [
-        sys.executable, "-m", "PyInstaller",
-        "--noconfirm",
-        "--clean",
-        "--onedir",
-        "--windowed",
-        "--name", "MK-Subtitle-Studio",
-        "--icon", os.path.join("assets", "logo.ico"),
-        "--add-data", f"frontend/dist{os.pathsep}frontend/dist",
-        "--add-data", f"assets{os.pathsep}assets",
-        "--collect-data", "whisper",
-        "--copy-metadata", "openai-whisper",
-        "--copy-metadata", "tqdm",
-        "--copy-metadata", "regex",
-        "--copy-metadata", "requests",
-        "--copy-metadata", "packaging",
-        "--copy-metadata", "filelock",
-        "--copy-metadata", "numpy",
-        "--copy-metadata", "torch",
-        "--exclude-module", "cv2",
-        "--exclude-module", "imageio",
-        "--exclude-module", "imageio_ffmpeg",
-        "--exclude-module", "sklearn",
-        "--exclude-module", "transformers",
-    ]
+    # Ensure build directories exist to avoid Windows PyInstaller race conditions
+    os.makedirs(os.path.join(root_dir, "build", "MK-Subtitle-Studio"), exist_ok=True)
+    spec_path = os.path.join(root_dir, "MK-Subtitle-Studio.spec")
 
-    try:
-        import whisper
-        whisper_src = os.path.dirname(whisper.__file__)
-        whisper_assets = os.path.join(whisper_src, "assets")
-        whisper_normalizers = os.path.join(whisper_src, "normalizers")
-        if os.path.exists(whisper_assets):
-            pyinstaller_cmd.extend(["--add-data", f"{whisper_assets}{os.pathsep}whisper/assets"])
-        if os.path.exists(whisper_normalizers):
-            pyinstaller_cmd.extend(["--add-data", f"{whisper_normalizers}{os.pathsep}whisper/normalizers"])
-    except Exception:
-        pass
+    if os.path.exists(spec_path):
+        pyinstaller_cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--noconfirm",
+            spec_path
+        ]
+    else:
+        pyinstaller_cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--noconfirm",
+            "--onedir",
+            "--windowed",
+            "--name", "MK-Subtitle-Studio",
+            "--icon", os.path.join("assets", "logo.ico"),
+            "--add-data", f"frontend/dist{os.pathsep}frontend/dist",
+            "--add-data", f"assets{os.pathsep}assets",
+            "--add-data", f"models{os.pathsep}models",
+            "--collect-all", "ai_edge_litert",
+            "--copy-metadata", "ai-edge-litert",
+            "--collect-data", "whisper",
+            "--copy-metadata", "openai-whisper",
+            "--copy-metadata", "tqdm",
+            "--copy-metadata", "regex",
+            "--copy-metadata", "requests",
+            "--copy-metadata", "packaging",
+            "--copy-metadata", "filelock",
+            "--copy-metadata", "numpy",
+            "--copy-metadata", "torch",
+            "--exclude-module", "cv2",
+            "--exclude-module", "imageio",
+            "--exclude-module", "imageio_ffmpeg",
+            "--exclude-module", "sklearn",
+            "--exclude-module", "transformers",
+        ]
 
-    pyinstaller_cmd.append("desktop_app.py")
+        try:
+            import whisper
+            whisper_src = os.path.dirname(whisper.__file__)
+            whisper_assets = os.path.join(whisper_src, "assets")
+            whisper_normalizers = os.path.join(whisper_src, "normalizers")
+            if os.path.exists(whisper_assets):
+                pyinstaller_cmd.extend(["--add-data", f"{whisper_assets}{os.pathsep}whisper/assets"])
+            if os.path.exists(whisper_normalizers):
+                pyinstaller_cmd.extend(["--add-data", f"{whisper_normalizers}{os.pathsep}whisper/normalizers"])
+        except Exception:
+            pass
+
+        pyinstaller_cmd.append("desktop_app.py")
 
     res = subprocess.run(pyinstaller_cmd, cwd=root_dir)
 
@@ -175,6 +196,24 @@ def build_standalone_exe():
 
     if os.path.exists(os.path.join(dest_tools, "ffmpeg.exe")):
         print("Runtime FFmpeg tools bundled successfully.")
+
+    # Copy UVR AI Models
+    dest_models = os.path.join(root_dir, "dist", "MK-Subtitle-Studio", "models")
+    os.makedirs(dest_models, exist_ok=True)
+    src_models = os.path.join(root_dir, "models")
+    if os.path.exists(src_models):
+        for f in os.listdir(src_models):
+            shutil.copy2(os.path.join(src_models, f), os.path.join(dest_models, f))
+        print("UVR vocal separation models bundled successfully.")
+
+    # Sync single root launcher executable
+    built_exe = os.path.join(root_dir, "dist", "MK-Subtitle-Studio", "MK-Subtitle-Studio.exe")
+    root_exe = os.path.join(root_dir, "MK-Subtitle-Studio.exe")
+    if os.path.exists(built_exe):
+        try:
+            shutil.copy2(built_exe, root_exe)
+        except Exception:
+            pass
 
     print("\n" + "=" * 60)
     print(" BUILD SUCCESSFUL!")

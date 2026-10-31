@@ -74,9 +74,15 @@ class VideoBurnRequest(BaseModel):
     bgm_volume: float = 0.3
     use_amf_gpu: bool = True
     add_logo_watermark: bool = False
+    job_id: Optional[str] = None
+    custom_output_filename: Optional[str] = None
 
 class STTRequest(BaseModel):
     video_filename: Optional[str] = None
     model_size: str = "base"
     language: Optional[str] = "auto"
     auto_translate_to_khmer: bool = True
+
+
+class VocalSeparationRequest(BaseModel):
+    video_filename: Optional[str] = None

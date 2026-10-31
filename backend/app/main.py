@@ -3,6 +3,8 @@ import sys
 import shutil
 import uuid
 import asyncio
+import subprocess
+import urllib.parse
 from pathlib import Path
 from typing import List, Optional
 
@@ -11,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import UPLOADS_DIR, AUDIO_CACHE_DIR, EXPORTS_DIR, FFMPEG_PATH, FFPROBE_PATH
+from .config import UPLOADS_DIR, AUDIO_CACHE_DIR, EXPORTS_DIR, FFMPEG_PATH, FFPROBE_PATH, SUBPROCESS_FLAGS
 from .models.subtitle import (
     SubtitleItem,
     SubtitleProject,
@@ -19,7 +21,8 @@ from .models.subtitle import (
     TTSBatchRequest,
     TranslationRequest,
     VideoBurnRequest,
-    STTRequest
+    STTRequest,
+    VocalSeparationRequest
 )
 from .services.subtitle_parser import (
     parse_subtitles_auto,
@@ -38,7 +41,8 @@ from .services.translator import (
     translate_batch_google_free
 )
 from .services.whisper_stt import transcribe_video_whisper
-from .services.ffmpeg_runner import probe_video, render_and_burn_video
+from .services.vocal_separator import separate_audio_vocals
+from .services.ffmpeg_runner import probe_video, render_and_burn_video, get_render_progress
 
 app = FastAPI(
     title="mk_subtitle API",
@@ -134,14 +138,28 @@ async def download_export(
     delete_after: bool = False,
     background_tasks: BackgroundTasks = None
 ):
-    path = EXPORTS_DIR / filename
+    unquoted = urllib.parse.unquote(filename)
+    path = EXPORTS_DIR / unquoted
+    if not path.exists():
+        path = EXPORTS_DIR / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail="Exported file not found")
 
     if delete_after and background_tasks:
         background_tasks.add_task(_safe_remove, path)
 
-    return FileResponse(path, filename=filename, media_type="video/mp4")
+    return FileResponse(path, filename=path.name, media_type="video/mp4")
+
+@app.post("/api/exports/open-folder")
+async def open_exports_folder_endpoint():
+    """Opens the exports directory in Windows File Explorer"""
+    try:
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer.exe", str(EXPORTS_DIR)], creationflags=SUBPROCESS_FLAGS)
+            return {"status": "success", "path": str(EXPORTS_DIR)}
+        return {"status": "unsupported"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== Storage Management & Purging ====================
 
@@ -275,6 +293,17 @@ async def transcribe_audio(req: STTRequest):
         print(f"Whisper transcription error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== UVR Vocal & Speech Separation ====================
+
+@app.post("/api/audio/separate-vocals")
+async def separate_vocals_endpoint(req: VocalSeparationRequest):
+    try:
+        res = await separate_audio_vocals(req.video_filename)
+        return res
+    except Exception as e:
+        print(f"UVR separation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== AI Translation ====================
 
 @app.post("/api/translate")
@@ -340,6 +369,11 @@ async def tts_batch(req: TTSBatchRequest):
 
 # ==================== Video Rendering & Burning ====================
 
+@app.get("/api/render/progress/{job_id}")
+async def get_render_progress_endpoint(job_id: str):
+    """Returns real-time render percentage progress for the specified job_id"""
+    return get_render_progress(job_id)
+
 @app.post("/api/render/burn")
 async def burn_video_endpoint(req: VideoBurnRequest, background_tasks: BackgroundTasks):
     try:
@@ -348,7 +382,7 @@ async def burn_video_endpoint(req: VideoBurnRequest, background_tasks: Backgroun
         return {
             "status": "success",
             "export_filename": export_filename,
-            "download_url": f"/api/exports/{export_filename}"
+            "download_url": f"/api/exports/{urllib.parse.quote(export_filename)}"
         }
     except Exception as e:
         import traceback

@@ -9,7 +9,11 @@ venv/
 # Build & Packaging (PyInstaller & Vite)
 build/
 dist/
+_internal/
+*.exe
+*.dll
 *.spec
+frontend/dist/
 
 # Node
 node_modules/

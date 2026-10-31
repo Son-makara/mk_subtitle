@@ -16,7 +16,7 @@ flowchart TD
 
     %% Method A: Standalone
     Choice -->|"Fastest (Pre-built)"| Standalone["Method A: Standalone Executable\n(No Python / Node.js required)"]
-    Standalone --> LaunchExe["Run dist/MK-Subtitle-Studio/MK-Subtitle-Studio.exe\nor double-click run.bat"]
+    Standalone --> LaunchExe["Double-click MK-Subtitle-Studio.exe"]
     LaunchExe --> AppReady(["Studio Launches & Ready to Use! 🎉"])
 
     %% Method B: From Source
@@ -24,20 +24,18 @@ flowchart TD
     Source --> CheckReq["Verify Prerequisites:\n• Python 3.10+\n• Node.js 18+\n• FFmpeg"]
     CheckReq --> InstallPy["1. Install Backend Dependencies:\npip install -r backend/requirements.txt"]
     InstallPy --> InstallNode["2. Install & Build Frontend:\ncd frontend && npm install && npm run build"]
-    InstallNode --> LaunchDev["3. Launch Application:\nrun.bat  OR  python desktop_app.py"]
+    InstallNode --> LaunchDev["3. Launch Application:\npython desktop_app.py"]
     LaunchDev --> AppReady
 
     %% Build Option
-    AppReady -.->|"Optional: Compile .exe"| BuildExe["Compile New Standalone .exe:\nrun.bat build"]
+    AppReady -.->|"Optional: Compile .exe"| BuildExe["Compile New Standalone .exe:\npython desktop_app.py --build"]
 ```
 
 ---
 
 ## ⚡ Method A: Quick Launch (Pre-Built Executable)
 
-If you already have the pre-built distribution in `dist/MK-Subtitle-Studio/`:
-
-1. **Double-click `run.bat`** (or open `dist\MK-Subtitle-Studio\MK-Subtitle-Studio.exe`).
+1. **Double-click `MK-Subtitle-Studio.exe`** directly in the project root.
 2. The native desktop app opens immediately with:
    - Bundled **OpenAI Whisper** offline model assets.
    - Bundled **FFmpeg / FFprobe** media engine.
@@ -98,7 +96,7 @@ cd ..
 
 Once installed, you can launch the application with any of the following:
 
-- **Option 1 (Easiest)**: Double-click **`run.bat`** in the project root.
+- **Option 1 (Easiest)**: Double-click **`MK-Subtitle-Studio.exe`** in the project root.
 - **Option 2 (Terminal)**:
   ```bash
   python desktop_app.py
@@ -120,10 +118,6 @@ Once installed, you can launch the application with any of the following:
 To compile the entire app (FastAPI + Vite frontend + Whisper assets + FFmpeg) into an independent standalone folder distribution:
 
 ```bash
-# Using run.bat shortcut:
-run.bat build
-
-# OR directly with Python:
 python desktop_app.py --build
 ```
 
@@ -183,7 +177,7 @@ mk_subtitle/
 ├── tools/                       # Bundled ffmpeg.exe & ffprobe.exe
 ├── dist/MK-Subtitle-Studio/     # Standalone portable Windows executable distribution
 ├── desktop_app.py               # Desktop PyWebView runner & PyInstaller build script
-├── run.bat                      # One-click launcher and build script
+├── MK-Subtitle-Studio.exe       # Standalone Windows one-click desktop application
 └── README.md                    # Project documentation
 ```
 

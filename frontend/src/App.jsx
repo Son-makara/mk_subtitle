@@ -17,7 +17,9 @@ import {
   Maximize2,
   Trash2,
   CheckCircle2,
-  FolderOpen
+  FolderOpen,
+  FolderCheck,
+  RefreshCw
 } from 'lucide-react';
 
 import SubtitleDataTable from './components/SubtitleDataTable';
@@ -63,6 +65,11 @@ export default function App() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [isRemovingVocals, setIsRemovingVocals] = useState(false);
+  const [cleanBgmUrl, setCleanBgmUrl] = useState(null);
+  const [cleanBgmFilename, setCleanBgmFilename] = useState(null);
+  const [cleanBgmEnabled, setCleanBgmEnabled] = useState(true);
+  const [cleanBgmVolume, setCleanBgmVolume] = useState(0.4);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
@@ -89,6 +96,12 @@ export default function App() {
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportType, setExportType] = useState('burn');
   const [burnResult, setBurnResult] = useState(null);
+
+  // One-Click Zero-Popup Render State
+  const [isRendering, setIsRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState(0);
+  const [lastRenderedVideo, setLastRenderedVideo] = useState(null);
+  const [renderToast, setRenderToast] = useState(null);
 
   // Fetch storage stats
   const fetchStorageUsage = async () => {
@@ -175,6 +188,15 @@ export default function App() {
     if (bgmAudioRef.current) {
       bgmAudioRef.current.pause();
       bgmAudioRef.current.currentTime = 0;
+    }
+  };
+
+  // Instantaneous Smooth Timeline Scrubbing / Seeking
+  const handleTimelineSeek = (targetTime) => {
+    const bounded = Math.max(0, Math.min(videoDuration || 0, targetTime));
+    setCurrentTime(bounded);
+    if (videoRef.current && Math.abs(videoRef.current.currentTime - bounded) > 0.02) {
+      videoRef.current.currentTime = bounded;
     }
   };
 
@@ -537,6 +559,70 @@ export default function App() {
     }
   };
 
+  // UVR AI Vocal Removal (Speech Erasure) Handler
+  const handleRemoveVocals = async () => {
+    const filename = videoServerFilename || videoFilename;
+    if (!videoUrl || !filename) {
+      alert('Please select or upload a video first.');
+      return;
+    }
+    setIsRemovingVocals(true);
+    setStatusMessage('Isolating background audio and erasing speech (UVR AI)...');
+    try {
+      const res = await fetch('/api/audio/separate-vocals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_filename: filename })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Server returned ${res.status}`);
+      }
+      const data = await res.json();
+      setCleanBgmUrl(data.instrumental_url);
+      setCleanBgmFilename(data.instrumental_filename);
+      setBgmUrl(data.instrumental_url);
+      setBgmFilename(data.instrumental_filename);
+      setCleanBgmEnabled(true);
+
+      if (!bgmAudioRef.current) {
+        bgmAudioRef.current = new Audio(data.instrumental_url);
+        bgmAudioRef.current.loop = true;
+      } else {
+        bgmAudioRef.current.src = data.instrumental_url;
+      }
+      bgmAudioRef.current.volume = cleanBgmVolume;
+
+      // Automatically mute original video's dialogue so only clean instrumental & dubbed voice play
+      setIsAudioMutedToggle(true);
+      setIsVideoMuted(true);
+      if (videoRef.current) videoRef.current.muted = true;
+
+      alert('Vocals removed! Original dialogue speech erased, clean BGM & sound effects isolated into Track B1.');
+      await fetchStorageUsage();
+    } catch (err) {
+      alert(`Vocal removal failed: ${err.message}`);
+    } finally {
+      setIsRemovingVocals(false);
+      setStatusMessage('');
+    }
+  };
+
+  const handleToggleCleanBgm = () => {
+    const nextState = !cleanBgmEnabled;
+    setCleanBgmEnabled(nextState);
+    if (bgmAudioRef.current) {
+      bgmAudioRef.current.muted = !nextState;
+    }
+  };
+
+  const handleCleanBgmVolumeChange = (newVol) => {
+    setCleanBgmVolume(newVol);
+    if (bgmAudioRef.current) {
+      bgmAudioRef.current.volume = newVol;
+    }
+  };
+
   // Subtitle File Upload Handler (SRT, VTT, ASS)
   const handleSubtitleUpload = async (file) => {
     setIsProcessing(true);
@@ -878,108 +964,240 @@ export default function App() {
     }
   };
 
-  // Final Render: asks user where to save on PC and auto-purges server temp cache
-  const handleSaveRenderedVideo = async (result, autoPurge = true) => {
+  // Save Rendered Video: prompts native Windows Save File dialog (showSaveFilePicker)
+  const handleSaveRenderedVideo = async (targetVideo = null) => {
+    const videoToSave = targetVideo || lastRenderedVideo || burnResult;
+    if (!videoToSave) return;
+
+    const rawBase = videoFilename || videoServerFilename || 'video';
+    const originalEpStem = rawBase.replace(/\.[^/.]+$/, '').replace(/^mk_sub_/, '');
+    const suggestedName = videoToSave.export_filename || `${originalEpStem}_dubbed.mp4`;
+
     try {
-      const suggestedName = result.export_filename || 'rendered_dubbed_video.mp4';
-      setStatusMessage('Saving video to your chosen location...');
-
       let saved = false;
-
-      // Try File System Access API if supported in browser environment
       if (typeof window.showSaveFilePicker === 'function') {
         try {
           const fileHandle = await window.showSaveFilePicker({
             suggestedName,
             types: [{
-              description: 'MP4 Video File',
+              description: 'MP4 Video File (*.mp4)',
               accept: { 'video/mp4': ['.mp4'] }
             }]
           });
 
-          const resp = await fetch(`${result.download_url}?delete_after=${autoPurge}`);
+          setRenderToast({ type: 'info', message: `💾 Saving ${suggestedName}...` });
+          const resp = await fetch(videoToSave.download_url);
           if (!resp.ok) throw new Error(`Download response status: ${resp.status}`);
           const blob = await resp.blob();
           const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
           saved = true;
+
+          setRenderToast({
+            type: 'success',
+            message: `✅ Saved to chosen folder: ${suggestedName}`,
+            data: videoToSave
+          });
         } catch (pickerErr) {
           if (pickerErr.name === 'AbortError') {
-            // User cancelled the file picker dialog
             return;
           }
-          console.warn('File picker unsupported or failed in this window context, falling back to download link:', pickerErr);
+          console.warn('File picker unsupported or failed, falling back to download:', pickerErr);
         }
       }
 
-      // Fallback: standard link download (reliable across Edge WebView2 and all browsers)
       if (!saved) {
         const a = document.createElement('a');
-        a.href = `${result.download_url}?delete_after=${autoPurge}`;
+        a.href = videoToSave.download_url;
         a.download = suggestedName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-      }
 
-      if (autoPurge) {
-        setTimeout(async () => {
-          await fetch('/api/storage/clean?clean_audio_cache=true&clean_exports=true', { method: 'POST' });
-          await fetchStorageUsage();
-        }, 2000);
+        setRenderToast({
+          type: 'success',
+          message: `✅ Saved: ${suggestedName}`,
+          data: videoToSave
+        });
       }
-
-      alert('Video successfully saved to your computer! Temporary render files were cleaned.');
-      setExportModalOpen(false);
     } catch (err) {
-      alert(`Save failed: ${err.message}`);
-    } finally {
-      setStatusMessage('');
+      setRenderToast({ type: 'error', message: `Save failed: ${err.message}` });
     }
   };
 
-  const handleRenderBurn = async (burnOptions) => {
-    if (!videoUrl || !videoFilename) {
-      alert('Please load a video file first to burn subtitles.');
+  // One-Click Render with Real-Time Progress (%) and Native Save As Location Picker
+  const handleOneClickRender = async () => {
+    const filename = videoServerFilename || videoFilename;
+    if (!videoUrl || !filename) {
+      setRenderToast({ type: 'error', message: 'Please select or upload a video first.' });
+      setTimeout(() => setRenderToast(null), 4000);
       return;
     }
     if (subtitles.length === 0) {
-      alert('Please load or transcribe subtitles first before rendering.');
+      setRenderToast({ type: 'error', message: 'No subtitles to render. Transcribe or import subtitles first.' });
+      setTimeout(() => setRenderToast(null), 4000);
       return;
     }
 
-    setIsProcessing(true);
-    setStatusMessage('Rendering video with AMD AMF GPU encoding...');
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setIsRendering(true);
+    setRenderProgress(0);
+    setRenderToast({ type: 'info', message: '⚡ Rendering video (AMD AMF GPU)... 0%' });
+    setStatusMessage('Rendering video with AMD AMF GPU encoding (0%)...');
+
+    let progressInterval = null;
+
     try {
+      progressInterval = setInterval(async () => {
+        try {
+          const progRes = await fetch(`/api/render/progress/${jobId}`);
+          if (progRes.ok) {
+            const pData = await progRes.json();
+            if (pData && pData.progress !== undefined) {
+              const pct = Math.max(0, Math.min(100, pData.progress));
+              setRenderProgress(pct);
+              setStatusMessage(`Rendering video with AMD AMF GPU encoding (${pct}%)...`);
+              setRenderToast({
+                type: 'info',
+                message: `⚡ Rendering video (AMD AMF GPU)... ${pct}%`
+              });
+            }
+          }
+        } catch (pollErr) {
+          // ignore transient polling blips
+        }
+      }, 350);
+
+      const smartOptions = {
+        subtitle_style: 'modern_yellow',
+        use_translation: true,
+        include_dubbing: subtitles.some((s) => s.audio_file),
+        mute_original_audio: isAudioMutedToggle || Boolean(cleanBgmUrl),
+        add_logo_watermark: false,
+        background_ducking_volume: 0.25,
+        use_amf_gpu: true
+      };
+
       const res = await fetch('/api/render/burn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          video_filename: videoServerFilename || videoFilename,
+          video_filename: filename,
+          custom_output_filename: videoFilename || filename,
+          job_id: jobId,
           items: subtitles,
-          bgm_filename: bgmFilename,
-          ...burnOptions
+          bgm_filename: cleanBgmFilename || bgmFilename,
+          ...smartOptions
         })
       });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Server returned error status ${res.status}`);
+        throw new Error(errorData.detail || `Server error ${res.status}`);
       }
 
       const data = await res.json();
-      if (data.download_url) {
-        setBurnResult(data);
-        await fetchStorageUsage();
-      } else {
-        throw new Error('Server completed render but did not return a valid download URL.');
+      if (!data.download_url) {
+        throw new Error('Server returned invalid download URL.');
       }
+
+      setRenderProgress(100);
+      setLastRenderedVideo(data);
+      setBurnResult(data);
+
+      // Name video derived from original video's episode name
+      const rawBase = videoFilename || videoServerFilename || 'video';
+      const originalEpStem = rawBase.replace(/\.[^/.]+$/, '').replace(/^mk_sub_/, '');
+      const suggestedName = data.export_filename || `${originalEpStem}_dubbed.mp4`;
+
+      // Prompt user to select destination folder on computer
+      let savedDirectly = false;
+      if (typeof window.showSaveFilePicker === 'function') {
+        try {
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName: suggestedName,
+            types: [{
+              description: 'MP4 Video File (*.mp4)',
+              accept: { 'video/mp4': ['.mp4'] }
+            }]
+          });
+
+          setRenderToast({
+            type: 'info',
+            message: `💾 Saving ${suggestedName} to chosen location...`
+          });
+
+          const blobRes = await fetch(data.download_url);
+          if (!blobRes.ok) throw new Error(`Download response status: ${blobRes.status}`);
+          const blob = await blobRes.blob();
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          savedDirectly = true;
+
+          setRenderToast({
+            type: 'success',
+            message: `✅ Saved to chosen folder: ${suggestedName}`,
+            data: data
+          });
+        } catch (pickerErr) {
+          if (pickerErr.name === 'AbortError') {
+            // User cancelled picker dialog
+            savedDirectly = true;
+            setRenderToast({
+              type: 'info',
+              message: `✅ Render complete! Click "Save to PC 💾" or "Folder 📂" anytime to choose location.`,
+              data: data
+            });
+          } else {
+            console.warn('File picker unsupported or failed:', pickerErr);
+          }
+        }
+      }
+
+      if (!savedDirectly) {
+        // Fallback to direct download with episode filename
+        const a = document.createElement('a');
+        a.href = data.download_url;
+        a.download = suggestedName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        setRenderToast({
+          type: 'success',
+          message: `✅ Render Complete: ${suggestedName}`,
+          data: data
+        });
+      }
+
+      await fetchStorageUsage();
     } catch (err) {
-      alert(`Burn render failed: ${err.message}`);
+      setRenderToast({ type: 'error', message: `Render failed: ${err.message}` });
     } finally {
-      setIsProcessing(false);
+      if (progressInterval) clearInterval(progressInterval);
+      setIsRendering(false);
       setStatusMessage('');
+      setTimeout(() => {
+        setRenderToast((prev) => (prev && prev.type === 'info' ? null : prev));
+      }, 4000);
+    }
+  };
+
+  const handleOpenExportsFolder = async () => {
+    try {
+      const res = await fetch('/api/exports/open-folder', { method: 'POST' });
+      const data = await res.json();
+      if (data.status !== 'success') {
+        if (lastRenderedVideo && lastRenderedVideo.download_url) {
+          window.open(lastRenderedVideo.download_url, '_blank');
+        }
+      }
+    } catch (e) {
+      if (lastRenderedVideo && lastRenderedVideo.download_url) {
+        window.open(lastRenderedVideo.download_url, '_blank');
+      }
     }
   };
 
@@ -1012,7 +1230,7 @@ export default function App() {
           isBatchProcessing={isBatchProcessing}
         />
 
-        {/* 2. Middle Column: Video Player & Workspace Tools */}
+        {/* 2. Middle Column: Video Player & Workspace Tools (Full-Space, Zero Scroll) */}
         <div
           style={{
             width: '320px',
@@ -1020,46 +1238,47 @@ export default function App() {
             borderRight: '1px solid var(--border-color)',
             display: 'flex',
             flexDirection: 'column',
-            overflowY: 'auto',
-            flexShrink: 0
+            overflow: 'hidden',
+            flexShrink: 0,
+            height: '100%'
           }}
-          className="custom-scrollbar"
         >
-          <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+          <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px', height: '100%', boxSizing: 'border-box' }}>
             {/* Brand Header */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '10px',
-                paddingBottom: '10px',
-                borderBottom: '1px solid var(--border-color)'
+                gap: '8px',
+                paddingBottom: '8px',
+                borderBottom: '1px solid var(--border-color)',
+                flexShrink: 0
               }}
             >
               <img
                 src="/logo.png"
                 alt="MK Movie Logo"
                 style={{
-                  width: '38px',
-                  height: '38px',
+                  width: '28px',
+                  height: '28px',
                   borderRadius: '50%',
                   objectFit: 'cover',
-                  boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)',
+                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)',
                   border: '1px solid rgba(239, 68, 68, 0.6)'
                 }}
               />
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <span
                   style={{
-                    fontSize: '14px',
+                    fontSize: '13px',
                     fontWeight: 700,
-                    letterSpacing: '0.04em',
+                    letterSpacing: '0.03em',
                     color: '#ffffff'
                   }}
                 >
                   MK <span style={{ color: '#ef4444' }}>MOVIE</span>
                 </span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 500 }}>
                   Subtitle & Dubbing Studio
                 </span>
               </div>
@@ -1068,19 +1287,20 @@ export default function App() {
             {/* Project / Video Title */}
             <div
               style={{
-                fontSize: '12px',
+                fontSize: '11px',
                 fontWeight: 600,
                 color: 'var(--text-bright)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '6px',
                 backgroundColor: 'var(--bg-base)',
-                padding: '6px 10px',
+                padding: '4px 8px',
                 borderRadius: '6px',
-                border: '1px solid var(--border-light)'
+                border: '1px solid var(--border-light)',
+                flexShrink: 0
               }}
             >
-              <Film size={14} style={{ color: '#ef4444', flexShrink: 0 }} />
+              <Film size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {videoFilename || 'No video loaded'}
               </span>
@@ -1089,15 +1309,17 @@ export default function App() {
             {/* Video Canvas Box with Clean State */}
             <div
               style={{
-                aspectRatio: '4/3',
+                aspectRatio: '16/9',
+                maxHeight: '170px',
                 backgroundColor: '#000',
-                borderRadius: '10px',
+                borderRadius: '8px',
                 border: '1px solid var(--border-color)',
                 overflow: 'hidden',
                 position: 'relative',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                flexShrink: 0
               }}
             >
               {videoUrl ? (
@@ -1122,15 +1344,15 @@ export default function App() {
                       className="font-khmer"
                       style={{
                         position: 'absolute',
-                        bottom: '10px',
+                        bottom: '8px',
                         left: '50%',
                         transform: 'translateX(-50%)',
                         backgroundColor: 'rgba(0, 0, 0, 0.85)',
                         color: '#facc15',
-                        fontSize: '12px',
+                        fontSize: '11px',
                         fontWeight: 600,
-                        padding: '4px 10px',
-                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
                         textAlign: 'center',
                         maxWidth: '90%',
                         pointerEvents: 'none',
@@ -1148,7 +1370,7 @@ export default function App() {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '8px',
+                    gap: '6px',
                     cursor: 'pointer',
                     width: '100%',
                     height: '100%',
@@ -1168,8 +1390,8 @@ export default function App() {
                   />
                   <div
                     style={{
-                      width: '52px',
-                      height: '52px',
+                      width: '42px',
+                      height: '42px',
                       borderRadius: '50%',
                       backgroundColor: 'rgba(239, 68, 68, 0.15)',
                       display: 'flex',
@@ -1178,16 +1400,16 @@ export default function App() {
                       color: '#ef4444'
                     }}
                   >
-                    <Film size={26} />
+                    <Film size={22} />
                   </div>
-                  <span style={{ fontSize: '12px', fontWeight: 500 }}>Click or Drop Video(s)</span>
+                  <span style={{ fontSize: '11px', fontWeight: 500 }}>Click or Drop Video(s)</span>
                 </label>
               )}
             </div>
 
             {/* Video Controls & Timestamps */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontFamily: 'monospace' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontFamily: 'monospace' }}>
                 <span style={{ color: 'var(--text-bright)', fontWeight: 600 }}>{formatTime(currentTime)}</span>
                 <span style={{ color: 'var(--text-muted)' }}>{formatTime(videoDuration)}</span>
               </div>
@@ -1208,33 +1430,33 @@ export default function App() {
                   width: '100%',
                   accentColor: 'var(--accent-primary)',
                   cursor: 'pointer',
-                  height: '4px'
+                  height: '3px'
                 }}
               />
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <button
                     onClick={togglePlay}
                     className="btn-secondary"
-                    style={{ padding: '4px 8px' }}
+                    style={{ padding: '3px 7px' }}
                     title={isPlaying ? 'Pause' : 'Play'}
                     disabled={!videoUrl}
                   >
-                    {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+                    {isPlaying ? <Pause size={12} /> : <Play size={12} />}
                   </button>
                   <button
                     onClick={stopVideo}
                     className="btn-secondary"
-                    style={{ padding: '4px 8px' }}
+                    style={{ padding: '3px 7px' }}
                     title="Stop"
                     disabled={!videoUrl}
                   >
-                    <Square size={12} />
+                    <Square size={11} />
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <button
                     onClick={() => {
                       if (videoRef.current) {
@@ -1243,248 +1465,304 @@ export default function App() {
                       }
                     }}
                     className="btn-secondary"
-                    style={{ padding: '4px 8px' }}
+                    style={{ padding: '3px 7px' }}
                     disabled={!videoUrl}
                   >
-                    {isVideoMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                    {isVideoMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Workspace Tools Section (Fully Functional!) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+            {/* Workspace Tools Section (Clean, Compact, Zero Scroll) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flexShrink: 0 }}>
               <div
                 style={{
-                  fontSize: '13px',
+                  fontSize: '11px',
                   fontWeight: 600,
                   color: 'var(--text-bright)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px'
+                  justifyContent: 'space-between'
                 }}
               >
-                <FolderOpen size={15} style={{ color: 'var(--accent-text)' }} />
-                <span>Workspace Tools</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <FolderOpen size={13} style={{ color: 'var(--accent-text)' }} />
+                  <span>Workspace Tools</span>
+                </div>
+                {storageUsage.total_mb > 0 && (
+                  <button
+                    onClick={() => handlePurgeStorage(false)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#38bdf8',
+                      fontSize: '10px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      padding: 0
+                    }}
+                    title="Purge temporary files from server to free disk space"
+                  >
+                    <Trash2 size={10} />
+                    <span>Purge ({storageUsage.total_mb}MB)</span>
+                  </button>
+                )}
               </div>
 
-              {/* 2x2 Tools Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                {/* 1. Load Video */}
-                <label
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    backgroundColor: 'var(--bg-hover)',
-                    border: '1px solid var(--border-light)',
-                    borderRadius: '10px',
-                    padding: '12px 6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                  title="Load MP4/MKV video into studio"
-                >
-                  <input
-                    type="file"
-                    accept="video/*"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleVideoUpload(e.target.files[0]);
-                      }
-                    }}
-                  />
-                  <FolderOpen size={20} style={{ color: '#3b82f6' }} />
-                  <span style={{ fontSize: '11px', fontWeight: 500 }}>Load Video</span>
-                </label>
-
-                {/* 2. Load BGM */}
-                <label
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    backgroundColor: bgmUrl ? 'rgba(168, 85, 247, 0.2)' : 'var(--bg-hover)',
-                    border: bgmUrl ? '1px solid #a855f7' : '1px solid var(--border-light)',
-                    borderRadius: '10px',
-                    padding: '12px 6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                  title={bgmFilename ? `BGM loaded: ${bgmFilename}` : 'Load Background Music MP3'}
-                >
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleBgmUpload(e.target.files[0]);
-                      }
-                    }}
-                  />
-                  <Music size={20} style={{ color: '#a855f7' }} />
-                  <span style={{ fontSize: '11px', fontWeight: 500 }}>
-                    {bgmUrl ? 'BGM Loaded' : 'Load BGM'}
-                  </span>
-                </label>
-
-                {/* 3. Audio Muted Toggle Button */}
-                <button
-                  onClick={() => setIsAudioMutedToggle(!isAudioMutedToggle)}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    backgroundColor: isAudioMutedToggle ? 'rgba(79, 70, 229, 0.25)' : 'var(--bg-hover)',
-                    border: isAudioMutedToggle ? '1px solid var(--accent-primary)' : '1px solid var(--border-light)',
-                    borderRadius: '10px',
-                    padding: '12px 6px',
-                    cursor: 'pointer',
-                    color: isAudioMutedToggle ? 'var(--text-bright)' : 'var(--text-primary)',
-                    transition: 'all 0.15s ease'
-                  }}
-                  title="Toggle original video audio mute"
-                >
-                  {isAudioMutedToggle ? (
-                    <VolumeX size={20} style={{ color: '#f87171' }} />
-                  ) : (
-                    <Volume2 size={20} style={{ color: '#10b981' }} />
-                  )}
-                  <span style={{ fontSize: '11px', fontWeight: 500 }}>
-                    {isAudioMutedToggle ? 'Audio Muted' : 'Mute Audio'}
-                  </span>
-                </button>
-
-                {/* 4. Export SRT */}
+              {/* 2-Column Buttons: Export SRT & Import SRT */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                {/* 1. Export SRT */}
                 <button
                   onClick={handleExportSRT}
+                  disabled={subtitles.length === 0}
                   style={{
                     display: 'flex',
-                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '6px',
                     backgroundColor: 'var(--bg-hover)',
                     border: '1px solid var(--border-light)',
-                    borderRadius: '10px',
-                    padding: '12px 6px',
-                    cursor: 'pointer',
+                    borderRadius: '8px',
+                    padding: '8px 6px',
+                    cursor: subtitles.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: subtitles.length === 0 ? 0.6 : 1,
                     color: 'var(--text-primary)',
+                    fontSize: '11px',
+                    fontWeight: 500,
                     transition: 'all 0.15s ease'
                   }}
                   title="Export SRT asking where to save"
                 >
-                  <Download size={20} style={{ color: '#06b6d4' }} />
-                  <span style={{ fontSize: '11px', fontWeight: 500 }}>Export SRT</span>
+                  <Download size={14} style={{ color: '#06b6d4' }} />
+                  <span>Export SRT</span>
                 </button>
-              </div>
 
-              {/* 5. Import Subtitles (SRT) */}
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  backgroundColor: 'var(--bg-hover)',
-                  border: '1px solid var(--border-light)',
-                  borderRadius: '10px',
-                  padding: '10px',
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  transition: 'all 0.15s ease'
-                }}
-                title="Import .srt, .vtt, or .ass file"
-              >
-                <input
-                  type="file"
-                  accept=".srt,.vtt,.ass"
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleSubtitleUpload(e.target.files[0]);
-                    }
+                {/* 2. Import Subtitles (SRT) */}
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    backgroundColor: 'var(--bg-hover)',
+                    border: '1px solid var(--border-light)',
+                    borderRadius: '8px',
+                    padding: '8px 6px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    transition: 'all 0.15s ease'
                   }}
-                />
-                <FileText size={16} style={{ color: '#f59e0b' }} />
-                <span>Import Subtitles (SRT)</span>
-              </label>
+                  title="Import .srt, .vtt, or .ass file"
+                >
+                  <input
+                    type="file"
+                    accept=".srt,.vtt,.ass"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleSubtitleUpload(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  <FileText size={14} style={{ color: '#f59e0b' }} />
+                  <span>Import SRT</span>
+                </label>
+              </div>
+            </div>
 
-              {/* 6. Purge Temp Storage */}
+            {/* Bottom Actions: One-Click Zero-Popup Render & Clear All Data */}
+            <div style={{ marginTop: 'auto', paddingTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px', flexShrink: 0 }}>
+              {/* Notification Banner */}
+              {renderToast && (
+                <div
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    fontSize: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '6px',
+                    backgroundColor:
+                      renderToast.type === 'success'
+                        ? 'rgba(16, 185, 129, 0.2)'
+                        : renderToast.type === 'error'
+                        ? 'rgba(239, 68, 68, 0.2)'
+                        : 'rgba(59, 130, 246, 0.2)',
+                    color:
+                      renderToast.type === 'success'
+                        ? '#34d399'
+                        : renderToast.type === 'error'
+                        ? '#f87171'
+                        : '#60a5fa',
+                    border: `1px solid ${
+                      renderToast.type === 'success'
+                        ? 'rgba(16, 185, 129, 0.4)'
+                        : renderToast.type === 'error'
+                        ? 'rgba(239, 68, 68, 0.4)'
+                        : 'rgba(59, 130, 246, 0.4)'
+                    }`
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {renderToast.message}
+                  </span>
+                  {renderToast.type === 'success' && (
+                    <button
+                      onClick={handleOpenExportsFolder}
+                      style={{
+                        background: 'none',
+                        border: '1px solid #34d399',
+                        borderRadius: '4px',
+                        color: '#34d399',
+                        padding: '1px 5px',
+                        fontSize: '9px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                      title="Open output folder in Windows Explorer"
+                    >
+                      Open 📂
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* ONE-CLICK ZERO-POPUP RENDER BUTTON */}
               <button
-                onClick={() => handlePurgeStorage(false)}
+                onClick={handleOneClickRender}
+                disabled={isRendering || !videoUrl || subtitles.length === 0}
                 style={{
+                  position: 'relative',
+                  overflow: 'hidden',
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: isRendering || !videoUrl || subtitles.length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: !videoUrl || subtitles.length === 0 ? 0.5 : 1,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '6px',
-                  backgroundColor: 'var(--bg-hover)',
-                  border: '1px solid var(--border-light)',
-                  borderRadius: '10px',
-                  padding: '8px',
-                  cursor: 'pointer',
-                  color: storageUsage.total_mb > 0 ? '#38bdf8' : 'var(--text-muted)',
-                  fontSize: '11px',
-                  fontWeight: 500,
+                  background: isRendering
+                    ? '#1e3a8a'
+                    : lastRenderedVideo
+                    ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+                    : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  color: '#ffffff',
+                  boxShadow: isRendering ? 'none' : '0 4px 12px rgba(239, 68, 68, 0.3)',
                   transition: 'all 0.15s ease'
                 }}
-                title="Purge temporary files from server to free disk space"
+                title="Render video directly with AMD AMF GPU encoding and prompt for save location"
               >
-                <Trash2 size={13} />
-                <span>Purge Temp Cache ({storageUsage.total_mb} MB)</span>
+                {/* Live percentage fill bar overlay */}
+                {isRendering && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${renderProgress}%`,
+                      backgroundColor: 'rgba(59, 130, 246, 0.75)',
+                      transition: 'width 0.3s ease',
+                      zIndex: 0
+                    }}
+                  />
+                )}
+                <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {isRendering ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Rendering AMF GPU ({renderProgress}%)...</span>
+                    </>
+                  ) : lastRenderedVideo ? (
+                    <>
+                      <CheckCircle2 size={15} />
+                      <span>Render Again (One-Click)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Flame size={15} />
+                      <span>One-Click Render Video</span>
+                    </>
+                  )}
+                </div>
               </button>
-            </div>
 
-            {/* Bottom Actions: Final Render & Clear All Data */}
-            <div style={{ marginTop: 'auto', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button
-                onClick={() => {
-                  setExportType('burn');
-                  setBurnResult(null);
-                  setExportModalOpen(true);
-                }}
-                className="btn-primary"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  justifyContent: 'center',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  boxShadow: '0 4px 12px rgba(79, 70, 229, 0.4)'
-                }}
-                disabled={!videoUrl || subtitles.length === 0}
-              >
-                <Film size={16} /> Final Render
-              </button>
+              {/* Quick Actions after Render: Save to PC (Choose Location) & Open Folder */}
+              {lastRenderedVideo && (
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={() => handleSaveRenderedVideo(lastRenderedVideo)}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      borderRadius: '6px',
+                      color: '#34d399',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px'
+                    }}
+                    title="Choose location on your computer to save the rendered video"
+                  >
+                    <Download size={12} /> Save to PC 💾
+                  </button>
+                  <button
+                    onClick={handleOpenExportsFolder}
+                    style={{
+                      padding: '6px 8px',
+                      backgroundColor: '#1f2937',
+                      border: '1px solid #374151',
+                      borderRadius: '6px',
+                      color: '#cbd5e1',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="Open Exports Folder in Windows Explorer"
+                  >
+                    <FolderCheck size={12} /> Folder 📂
+                  </button>
+                </div>
+              )}
 
+              {/* Clear Workspace Data (Single deduplicated button) */}
               <button
                 onClick={handleClearAllData}
                 style={{
                   width: '100%',
-                  padding: '8px',
-                  backgroundColor: 'var(--bg-hover)',
+                  padding: '5px 8px',
+                  backgroundColor: 'transparent',
                   border: '1px solid var(--border-light)',
-                  borderRadius: '8px',
+                  borderRadius: '6px',
                   color: '#f87171',
-                  fontSize: '12px',
-                  fontWeight: 500,
+                  fontSize: '10px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '6px'
+                  gap: '4px',
+                  transition: 'background-color 0.15s ease'
                 }}
+                title="Clear all subtitles and workspace data"
               >
-                <Trash2 size={13} /> Clear All Data
+                <Trash2 size={11} /> Clear Workspace
               </button>
             </div>
           </div>
@@ -1518,8 +1796,9 @@ export default function App() {
         selectedIds={selectedIds}
         onSelectIds={setSelectedIds}
         currentTime={currentTime}
-        onSeekTime={setCurrentTime}
+        onSeekTime={handleTimelineSeek}
         totalDuration={videoDuration}
+        isPlaying={isPlaying}
         onTranscribeClick={() => {
           setAiModalMode('whisper');
           setAiModalOpen(true);
@@ -1531,6 +1810,15 @@ export default function App() {
         playingAudioId={playingAudioId}
         isTranscribing={isTranscribing}
         isGeneratingAudio={isGeneratingAudio}
+        onRemoveVocalsClick={handleRemoveVocals}
+        isRemovingVocals={isRemovingVocals}
+        hasCleanBgm={Boolean(cleanBgmUrl)}
+        cleanBgmFilename={cleanBgmFilename}
+        onToggleCleanBgm={handleToggleCleanBgm}
+        cleanBgmEnabled={cleanBgmEnabled}
+        bgmVolume={cleanBgmVolume}
+        onBgmVolumeChange={handleCleanBgmVolumeChange}
+        hasVideoLoaded={Boolean(videoUrl)}
       />
 
       {/* Very Bottom Status Bar */}
@@ -1601,9 +1889,9 @@ export default function App() {
         onClose={() => setExportModalOpen(false)}
         type={exportType}
         onExportSubs={handleExportSRT}
-        onRenderBurn={handleRenderBurn}
+        onRenderBurn={handleOneClickRender}
         onSaveRenderedVideo={handleSaveRenderedVideo}
-        isProcessing={isProcessing}
+        isProcessing={isRendering || isProcessing}
         downloadResult={burnResult}
       />
     </div>

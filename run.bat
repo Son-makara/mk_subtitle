@@ -7,6 +7,10 @@ if /i "%~1"=="build" goto do_build
 if /i "%~1"=="-b" goto do_build
 
 :: 2. If compiled executable exists, launch it directly in background
+if exist "MK-Subtitle-Studio.exe" (
+    start "" "MK-Subtitle-Studio.exe"
+    exit /b 0
+)
 if exist "dist\MK-Subtitle-Studio\MK-Subtitle-Studio.exe" (
     start "" "dist\MK-Subtitle-Studio\MK-Subtitle-Studio.exe"
     exit /b 0
