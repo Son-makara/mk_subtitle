@@ -208,12 +208,6 @@ def build_standalone_exe():
 
     # Sync single root launcher executable
     built_exe = os.path.join(root_dir, "dist", "MK-Subtitle-Studio", "MK-Subtitle-Studio.exe")
-    root_exe = os.path.join(root_dir, "MK-Subtitle-Studio.exe")
-    if os.path.exists(built_exe):
-        try:
-            shutil.copy2(built_exe, root_exe)
-        except Exception:
-            pass
 
     print("\n" + "=" * 60)
     print(" BUILD SUCCESSFUL!")
