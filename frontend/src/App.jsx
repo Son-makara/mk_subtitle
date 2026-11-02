@@ -948,22 +948,28 @@ export default function App() {
 
   // Generate audio for selected items (using Edge-TTS)
   const handleGenerateSelectedAudio = async () => {
-    if (!navigator.onLine) {
-      alert('Internet connection required: Edge-TTS neural voiceover requires an active internet connection to generate speech. Editing, Whisper STT, and Video Rendering work 100% offline.');
+    if (subtitles.length === 0) {
+      alert('No subtitles found. Please transcribe or import subtitles first.');
       return;
     }
 
-    const targets = subtitles.filter((s) => selectedIds.includes(s.id));
-    if (targets.length === 0) {
-      alert('Please select at least one subtitle row to generate voice.');
-      return;
-    }
+    // Smart Target: If user selected a specific subset, generate for them; otherwise generate for ALL subtitles!
+    const isSubset = selectedIds.length > 0 && selectedIds.length < subtitles.length;
+    const targets = isSubset
+      ? subtitles.filter((s) => selectedIds.includes(s.id))
+      : subtitles;
+
+    const targetIdSet = new Set(targets.map((t) => t.id));
 
     setIsGeneratingAudio(true);
-    setStatusMessage(`Generating audio for ${targets.length} selected lines...`);
+    setStatusMessage(`Generating audio for ${targets.length} lines (Khmer Neural Voice)...`);
+    setRenderToast({
+      type: 'info',
+      message: `🎙️ Generating Khmer AI audio for ${targets.length} lines...`
+    });
 
     setSubtitles((prev) =>
-      prev.map((s) => (selectedIds.includes(s.id) ? { ...s, audio_status: 'generating' } : s))
+      prev.map((s) => (targetIdSet.has(s.id) ? { ...s, audio_status: 'generating' } : s))
     );
 
     try {
@@ -978,22 +984,43 @@ export default function App() {
           auto_fit: true
         })
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Server returned error ${res.status}`);
+      }
+
       const data = await res.json();
       if (data.items) {
         const lookup = {};
         data.items.forEach((it) => {
           lookup[it.id] = it;
         });
-        setSubtitles((prev) =>
-          prev.map((s) => (lookup[s.id] ? { ...s, ...lookup[s.id] } : s))
-        );
+        const updated = subtitles.map((s) => (lookup[s.id] ? { ...s, ...lookup[s.id] } : s));
+        setSubtitles(updated);
+
+        // Synchronize with active video in queue
+        if (activeVideoId) {
+          setVideoQueue((prev) =>
+            prev.map((v) => (v.id === activeVideoId ? { ...v, subtitles: updated } : v))
+          );
+        }
+
         await fetchStorageUsage();
+        setRenderToast({
+          type: 'success',
+          message: `🎙️ Generated Khmer AI audio for ${targets.length} subtitle lines!`
+        });
+        setTimeout(() => setRenderToast(null), 3500);
       }
     } catch (err) {
+      console.error('Audio generation failed:', err);
       alert(`Audio generation failed: ${err.message}`);
       setSubtitles((prev) =>
-        prev.map((s) => (selectedIds.includes(s.id) ? { ...s, audio_status: 'error' } : s))
+        prev.map((s) => (targetIdSet.has(s.id) ? { ...s, audio_status: 'error' } : s))
       );
+      setRenderToast({ type: 'error', message: `Audio generation failed: ${err.message}` });
+      setTimeout(() => setRenderToast(null), 4000);
     } finally {
       setIsGeneratingAudio(false);
       setStatusMessage('');
@@ -1094,12 +1121,8 @@ export default function App() {
 
   // Translate subtitles (Google Free or Gemini AI)
   const handleStartTranslate = async (params = {}) => {
-    if (!navigator.onLine) {
-      alert('Internet connection required: Translation requires an active internet connection. You can edit subtitles directly in the table while offline.');
-      return;
-    }
     if (subtitles.length === 0) {
-      alert('No subtitles loaded to translate.');
+      alert('No subtitles loaded to translate. Please transcribe or import subtitles first.');
       return;
     }
 
@@ -1111,6 +1134,11 @@ export default function App() {
 
     setIsTranslating(true);
     setStatusMessage(`Translating ${targetItems.length} lines to Khmer...`);
+    setRenderToast({
+      type: 'info',
+      message: `🌐 Translating ${targetItems.length} lines to Khmer...`
+    });
+
     try {
       const res = await fetch('/api/translate', {
         method: 'POST',
@@ -1135,13 +1163,30 @@ export default function App() {
         data.items.forEach((it) => {
           lookup[it.id] = it.translated_text;
         });
-        setSubtitles((prev) =>
-          prev.map((s) => (lookup[s.id] !== undefined ? { ...s, translated_text: lookup[s.id] } : s))
+        const updated = subtitles.map((s) =>
+          lookup[s.id] !== undefined ? { ...s, translated_text: lookup[s.id] } : s
         );
+        setSubtitles(updated);
+
+        // Synchronize with active video in queue
+        if (activeVideoId) {
+          setVideoQueue((prev) =>
+            prev.map((v) => (v.id === activeVideoId ? { ...v, subtitles: updated } : v))
+          );
+        }
+
         setAiModalOpen(false);
+        setRenderToast({
+          type: 'success',
+          message: `🌐 Translated ${targetItems.length} lines to Khmer!`
+        });
+        setTimeout(() => setRenderToast(null), 3500);
       }
     } catch (err) {
+      console.error('Translation failed:', err);
       alert(`Translation failed: ${err.message}`);
+      setRenderToast({ type: 'error', message: `Translation failed: ${err.message}` });
+      setTimeout(() => setRenderToast(null), 4000);
     } finally {
       setIsTranslating(false);
       setStatusMessage('');
@@ -2337,6 +2382,8 @@ export default function App() {
               setAiModalOpen(true);
             }}
             isTranslating={isTranslating}
+            onGenerateAudioClick={handleGenerateSelectedAudio}
+            isGeneratingAudio={isGeneratingAudio}
           />
         </div>
       </div>
@@ -2354,6 +2401,8 @@ export default function App() {
           setAiModalMode('whisper');
           setAiModalOpen(true);
         }}
+        onTranslateClick={() => handleStartTranslate({ provider: 'google_free' })}
+        isTranslating={isTranslating}
         onGenerateAudioClick={handleGenerateSelectedAudio}
         onUpdateSubtitle={handleUpdateSubtitle}
         onClearTrack={handleClearTrack}

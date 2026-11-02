@@ -162,7 +162,7 @@ export default function AIModal({
                   backgroundColor: 'var(--bg-tertiary)',
                   border: '1px solid var(--border-color)',
                   borderRadius: '8px',
-                  color: '#fff',
+                  color: '#ffffffff',
                   padding: '8px 12px',
                   fontSize: '13px',
                   outline: 'none'
