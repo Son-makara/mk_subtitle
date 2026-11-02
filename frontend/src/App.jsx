@@ -28,6 +28,7 @@ import TimelineEditor from './components/TimelineEditor';
 import AIModal from './components/AIModal';
 import ExportModal from './components/ExportModal';
 import SettingsModal from './components/SettingsModal';
+import ShortcutsModal from './components/ShortcutsModal';
 import VideoQueueSidebar from './components/VideoQueueSidebar';
 import { formatTime } from './utils/time_formatter';
 import { getStoredTheme, getStoredAccent, applyTheme } from './utils/theme';
@@ -37,6 +38,8 @@ export default function App() {
   const [videoQueue, setVideoQueue] = useState([]);
   const [activeVideoId, setActiveVideoId] = useState(null);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [isBatchRendering, setIsBatchRendering] = useState(false);
+  const batchCancelRef = useRef(false);
 
   // Pure Clean State - Zero Hardcoded Demo Data
   const [subtitles, setSubtitles] = useState([]);
@@ -100,6 +103,7 @@ export default function App() {
   const [exportType, setExportType] = useState('burn');
   const [burnResult, setBurnResult] = useState(null);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
 
   // Theme & Accent State with LocalStorage Persistence
   const [currentTheme, setCurrentTheme] = useState(() => getStoredTheme());
@@ -546,6 +550,262 @@ export default function App() {
     setIsBatchProcessing(false);
     setStatusMessage('Batch Auto-Pilot completed!');
     setTimeout(() => setStatusMessage(''), 3000);
+  };
+
+  const handleCancelBatch = () => {
+    batchCancelRef.current = true;
+    setStatusMessage('Stopping batch process after current operation...');
+    setRenderToast({ type: 'info', message: 'Stopping batch process...' });
+  };
+
+  // One-Click Batch Render for Multi-Video Queue
+  const handleBatchRenderVideos = async (targetIds = null, customOptions = null) => {
+    if (isBatchRendering || isBatchProcessing || videoQueue.length === 0) return;
+
+    const idsToRun = Array.isArray(targetIds) && targetIds.length > 0
+      ? targetIds
+      : videoQueue.map((v) => v.id);
+
+    const itemsToProcess = videoQueue.filter((v) => idsToRun.includes(v.id));
+    if (itemsToProcess.length === 0) {
+      alert('Please check at least one video in the queue to render.');
+      return;
+    }
+
+    batchCancelRef.current = false;
+
+    // 1. One-Time Destination Folder Selection
+    let dirHandle = null;
+    if (typeof window.showDirectoryPicker === 'function') {
+      try {
+        dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      } catch (pickerErr) {
+        if (pickerErr.name === 'AbortError') {
+          // User explicitly cancelled folder picker
+          return;
+        }
+        console.warn('showDirectoryPicker error or not allowed:', pickerErr);
+      }
+    }
+
+    setIsBatchRendering(true);
+    setRenderToast({
+      type: 'info',
+      message: `⚡ Starting Batch Render for ${itemsToProcess.length} videos...`
+    });
+    setStatusMessage(`Starting Batch Render for ${itemsToProcess.length} videos...`);
+
+    const isCustomObject = customOptions && typeof customOptions === 'object' && !customOptions.nativeEvent;
+    const renderOpts = {
+      subtitle_style: isCustomObject?.subtitle_style || 'modern_yellow',
+      use_translation: isCustomObject?.use_translation !== undefined ? isCustomObject.use_translation : true,
+      include_dubbing: isCustomObject?.include_dubbing !== undefined ? isCustomObject.include_dubbing : true,
+      mute_original_audio: isCustomObject?.mute_original_audio !== undefined ? isCustomObject.mute_original_audio : true,
+      add_logo_watermark: Boolean(isCustomObject?.add_logo_watermark),
+      background_ducking_volume: isCustomObject?.background_ducking_volume !== undefined ? isCustomObject.background_ducking_volume : 0.25,
+      use_amf_gpu: isCustomObject?.use_amf_gpu !== undefined ? isCustomObject.use_amf_gpu : true
+    };
+
+    let successfullyRendered = 0;
+
+    for (let i = 0; i < itemsToProcess.length; i++) {
+      if (batchCancelRef.current) {
+        setRenderToast({ type: 'info', message: 'Batch render was cancelled.' });
+        break;
+      }
+
+      const currentItem = itemsToProcess[i];
+      const vidName = currentItem.name || currentItem.serverFilename;
+      let items = currentItem.subtitles || [];
+      const hasSubtitles = items.length > 0;
+      const hasVoice = hasSubtitles && items.some((it) => it.audio_url || it.audio_status === 'ready');
+
+      try {
+        // Step A: Whisper Speech-to-Text with auto Khmer translation (if not yet transcribed)
+        if (!hasSubtitles) {
+          setStatusMessage(`[Batch ${i + 1}/${itemsToProcess.length}] Transcribing ${vidName}...`);
+          setRenderToast({ type: 'info', message: `[${i + 1}/${itemsToProcess.length}] Transcribing ${vidName}...` });
+          setVideoQueue((prev) =>
+            prev.map((v) =>
+              v.id === currentItem.id ? { ...v, status: 'transcribing', progress: 30 } : v
+            )
+          );
+
+          const sttRes = await fetch('/api/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              video_filename: currentItem.serverFilename || currentItem.name,
+              model_size: 'base',
+              language: null,
+              auto_translate_to_khmer: true
+            })
+          });
+
+          if (!sttRes.ok) throw new Error(`Transcription failed (${sttRes.status})`);
+          const sttData = await sttRes.json();
+          items = (sttData.items || []).map((it) => ({
+            ...it,
+            gender: it.gender || 'Female',
+            audio_status: 'idle',
+            speed: 1.0,
+            translated_text: it.translated_text || null
+          }));
+        }
+
+        if (batchCancelRef.current) break;
+
+        // Step B: Generate Edge-TTS Dubbing with pitch-matched voices (if dubbing requested and not yet voiced)
+        if (renderOpts.include_dubbing && (!hasVoice || items.some((it) => !it.audio_url && it.audio_status !== 'ready'))) {
+          setStatusMessage(`[Batch ${i + 1}/${itemsToProcess.length}] Generating Khmer voice for ${vidName}...`);
+          setRenderToast({ type: 'info', message: `[${i + 1}/${itemsToProcess.length}] Generating Khmer voice...` });
+          setVideoQueue((prev) =>
+            prev.map((v) =>
+              v.id === currentItem.id ? { ...v, status: 'dubbing', progress: 60, subtitles: items } : v
+            )
+          );
+
+          const ttsRes = await fetch('/api/tts/generate-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              items: items,
+              use_translation: renderOpts.use_translation,
+              voice_male: 'km-KH-PisethNeural',
+              voice_female: 'km-KH-SreymomNeural',
+              auto_fit: true
+            })
+          });
+
+          if (ttsRes.ok) {
+            const ttsData = await ttsRes.json();
+            if (ttsData.items && ttsData.items.length > 0) {
+              items = ttsData.items;
+            }
+          }
+        }
+
+        if (batchCancelRef.current) break;
+
+        // Step C: Render & Burn MP4 Video with GPU acceleration
+        const jobId = `job_batch_${Date.now()}_${i}`;
+        setStatusMessage(`[Batch ${i + 1}/${itemsToProcess.length}] Rendering MP4: ${vidName}...`);
+        setRenderToast({ type: 'info', message: `⚡ [${i + 1}/${itemsToProcess.length}] Rendering ${vidName}... 0%` });
+        setVideoQueue((prev) =>
+          prev.map((v) =>
+            v.id === currentItem.id ? { ...v, status: 'rendering', progress: 10, subtitles: items } : v
+          )
+        );
+
+        let itemProgressTimer = setInterval(async () => {
+          try {
+            const pRes = await fetch(`/api/render/progress/${jobId}`);
+            if (pRes.ok) {
+              const pData = await pRes.json();
+              if (pData && pData.progress !== undefined) {
+                const pct = Math.max(0, Math.min(100, pData.progress));
+                setVideoQueue((prev) =>
+                  prev.map((v) =>
+                    v.id === currentItem.id ? { ...v, progress: pct } : v
+                  )
+                );
+                setRenderToast({
+                  type: 'info',
+                  message: `⚡ [${i + 1}/${itemsToProcess.length}] Rendering ${vidName}... ${pct}%`
+                });
+              }
+            }
+          } catch (e) {}
+        }, 500);
+
+        const burnRes = await fetch('/api/render/burn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            video_filename: currentItem.serverFilename || currentItem.name,
+            custom_output_filename: currentItem.name,
+            job_id: jobId,
+            items: items,
+            bgm_filename: cleanBgmFilename || bgmFilename,
+            ...renderOpts
+          })
+        });
+
+        clearInterval(itemProgressTimer);
+
+        if (!burnRes.ok) {
+          const errData = await burnRes.json().catch(() => ({}));
+          throw new Error(errData.detail || `Render server error ${burnRes.status}`);
+        }
+
+        const burnData = await burnRes.json();
+
+        // Step D: Write rendered MP4 to chosen output folder if dirHandle available
+        const rawStem = (currentItem.name || currentItem.serverFilename || `video_${i + 1}`)
+          .replace(/\.[^/.]+$/, '')
+          .replace(/^mk_sub_/, '');
+        const outputFilename = burnData.export_filename || `${rawStem}_dubbed.mp4`;
+
+        if (dirHandle) {
+          try {
+            const fileHandle = await dirHandle.getFileHandle(outputFilename, { create: true });
+            const blobRes = await fetch(burnData.download_url);
+            const blob = await blobRes.blob();
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+          } catch (writeErr) {
+            console.warn(`Could not write ${outputFilename} directly to folder:`, writeErr);
+          }
+        }
+
+        successfullyRendered++;
+
+        // Step E: Mark video as successfully rendered in queue
+        setVideoQueue((prev) =>
+          prev.map((v) =>
+            v.id === currentItem.id
+              ? {
+                  ...v,
+                  status: 'rendered',
+                  progress: 100,
+                  subtitles: items,
+                  export_url: burnData.download_url,
+                  export_filename: outputFilename
+                }
+              : v
+          )
+        );
+
+        // Update active workspace if this was the active video
+        setActiveVideoId((currActive) => {
+          if (currActive === currentItem.id) {
+            setSubtitles(items);
+            setSelectedIds(items.map((it) => it.id));
+          }
+          return currActive;
+        });
+
+      } catch (err) {
+        console.error(`Batch render failed for ${vidName}:`, err);
+        setVideoQueue((prev) =>
+          prev.map((v) =>
+            v.id === currentItem.id
+              ? { ...v, status: 'error', errorMessage: err.message }
+              : v
+          )
+        );
+      }
+    }
+
+    setIsBatchRendering(false);
+    setStatusMessage(`🎉 Batch Render finished: ${successfullyRendered} videos rendered successfully!`);
+    setRenderToast({
+      type: 'success',
+      message: `🎉 Batch Render Completed: ${successfullyRendered} video(s) rendered!`,
+      data: { isBatch: true }
+    });
+    await fetchStorageUsage();
   };
 
   // BGM Audio Upload Handler
@@ -1269,6 +1529,198 @@ export default function App() {
     }
   };
 
+  // Global Keyboard Shortcuts System
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      const target = e.target;
+      const tag = target ? target.tagName.toLowerCase() : '';
+      const isInput = tag === 'input' || tag === 'textarea' || (target && target.isContentEditable);
+
+      // 1. Modal Close (Escape) - works even inside inputs
+      if (e.key === 'Escape') {
+        if (shortcutsModalOpen) { setShortcutsModalOpen(false); return; }
+        if (settingsModalOpen) { setSettingsModalOpen(false); return; }
+        if (exportModalOpen) { setExportModalOpen(false); return; }
+        if (aiModalOpen) { setAiModalOpen(false); return; }
+        return;
+      }
+
+      // 2. Open Shortcuts Cheat Sheet (? or F1)
+      if ((e.key === '?' || e.key === 'F1') && !isInput) {
+        e.preventDefault();
+        setShortcutsModalOpen((prev) => !prev);
+        return;
+      }
+
+      // 3. Open Settings (Ctrl + ,)
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+        e.preventDefault();
+        setSettingsModalOpen((prev) => !prev);
+        return;
+      }
+
+      // 4. Batch Render All (Ctrl + Shift + R)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        handleBatchRenderVideos();
+        return;
+      }
+
+      // 5. 1-Click Render Single Video (Ctrl + R)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        handleOneClickRender();
+        return;
+      }
+
+      // 6. Generate Selected Khmer Audio (Ctrl + G)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        handleGenerateSelectedAudio();
+        return;
+      }
+
+      // 7. Translate to Khmer (Ctrl + T)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        handleStartTranslate();
+        return;
+      }
+
+      // 8. Open Export Modal (Ctrl + E)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        setExportType('burn');
+        setExportModalOpen(true);
+        return;
+      }
+
+      // 9. Add Subtitle at Current Playhead (Ctrl + Enter) - works even inside input!
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        const newId = `sub_${Date.now()}`;
+        const newStart = parseFloat(currentTime.toFixed(2));
+        const newEnd = parseFloat((currentTime + 2.5).toFixed(2));
+        const newItem = {
+          id: newId,
+          start_time: newStart,
+          end_time: newEnd,
+          text: '',
+          translated_text: '',
+          gender: 'Female',
+          speed: 1.0,
+          audio_status: 'idle'
+        };
+        setSubtitles((prev) => [...prev, newItem].sort((a, b) => a.start_time - b.start_time));
+        setSelectedIds([newId]);
+        return;
+      }
+
+      // 10. Play Audio of Selected Subtitle (Ctrl + Space)
+      if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+        e.preventDefault();
+        const activeItem = subtitles.find((s) => selectedIds.includes(s.id));
+        if (activeItem && activeItem.audio_url) {
+          handlePlayAudio(activeItem);
+        }
+        return;
+      }
+
+      // 11. Queue Navigation (Alt + Up / Down, PageUp / PageDown)
+      if ((e.altKey && e.key === 'ArrowUp') || e.key === 'PageUp') {
+        if (videoQueue.length > 1) {
+          e.preventDefault();
+          const currIdx = videoQueue.findIndex((v) => v.id === activeVideoId);
+          const prevIdx = (currIdx - 1 + videoQueue.length) % videoQueue.length;
+          handleSelectVideo(videoQueue[prevIdx].id);
+        }
+        return;
+      }
+      if ((e.altKey && e.key === 'ArrowDown') || e.key === 'PageDown') {
+        if (videoQueue.length > 1) {
+          e.preventDefault();
+          const currIdx = videoQueue.findIndex((v) => v.id === activeVideoId);
+          const nextIdx = (currIdx + 1) % videoQueue.length;
+          handleSelectVideo(videoQueue[nextIdx].id);
+        }
+        return;
+      }
+
+      // ==========================================
+      // GUARD AGAINST TEXT INPUTS:
+      // If user is actively typing text, do not intercept single keys!
+      // ==========================================
+      if (isInput) return;
+
+      // 12. Play / Pause Video (Space)
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setIsPlaying((prev) => !prev);
+        return;
+      }
+
+      // 13. Preview Khmer Voice (P or p)
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        const activeItem = subtitles.find((s) => selectedIds.includes(s.id));
+        if (activeItem) {
+          if (activeItem.audio_url) {
+            handlePlayAudio(activeItem);
+          } else {
+            handleGenerateSelectedAudio();
+          }
+        }
+        return;
+      }
+
+      // 14. Delete Selected Subtitle(s) (Delete)
+      if (e.key === 'Delete') {
+        if (selectedIds.length > 0) {
+          e.preventDefault();
+          setSubtitles((prev) => prev.filter((s) => !selectedIds.includes(s.id)));
+          setSelectedIds([]);
+        }
+        return;
+      }
+
+      // 15. Set Start Time ([) or End Time (]) to current playhead
+      if (e.key === '[' || e.key === ']') {
+        if (selectedIds.length > 0) {
+          e.preventDefault();
+          const targetId = selectedIds[0];
+          const roundedTime = parseFloat(currentTime.toFixed(2));
+          setSubtitles((prev) =>
+            prev.map((s) => {
+              if (s.id !== targetId) return s;
+              if (e.key === '[') {
+                return { ...s, start_time: Math.min(roundedTime, Math.max(0, s.end_time - 0.1)) };
+              } else {
+                return { ...s, end_time: Math.max(roundedTime, s.start_time + 0.1) };
+              }
+            })
+          );
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [
+    shortcutsModalOpen,
+    settingsModalOpen,
+    exportModalOpen,
+    aiModalOpen,
+    subtitles,
+    selectedIds,
+    currentTime,
+    videoQueue,
+    activeVideoId,
+    isPlaying
+  ]);
+
   const activeSub = subtitles.find(
     (s) => currentTime >= s.start_time && currentTime <= s.end_time
   );
@@ -1296,7 +1748,11 @@ export default function App() {
           onClearQueue={handleClearQueue}
           onBatchProcessAll={handleBatchProcessAll}
           isBatchProcessing={isBatchProcessing}
+          onBatchRenderAll={handleBatchRenderVideos}
+          isBatchRendering={isBatchRendering}
+          onCancelBatch={handleCancelBatch}
           onOpenSettings={() => setSettingsModalOpen(true)}
+          onOpenShortcuts={() => setShortcutsModalOpen(true)}
         />
 
         {/* 2. Middle Column: Video Player & Workspace Tools (Full-Space, Zero Scroll) */}
@@ -1989,6 +2445,9 @@ export default function App() {
         isProcessing={isRendering || isProcessing}
         downloadResult={burnResult}
         subtitles={subtitles}
+        queue={videoQueue}
+        onBatchRender={handleBatchRenderVideos}
+        isBatchRendering={isBatchRendering}
       />
 
       <SettingsModal
@@ -2000,6 +2459,11 @@ export default function App() {
         onSelectAccent={(accentId) => setCurrentAccent(accentId)}
         storageUsage={storageUsage}
         onPurgeStorage={handlePurgeStorage}
+      />
+
+      <ShortcutsModal
+        isOpen={shortcutsModalOpen}
+        onClose={() => setShortcutsModalOpen(false)}
       />
     </div>
   );

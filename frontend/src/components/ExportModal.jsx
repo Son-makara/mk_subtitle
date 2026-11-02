@@ -10,10 +10,23 @@ export default function ExportModal({
   onSaveRenderedVideo,
   isProcessing,
   downloadResult,
-  subtitles = []
+  subtitles = [],
+  queue = [],
+  selectedQueueIds = [],
+  onBatchRender,
+  isBatchRendering = false
 }) {
   const [subFormat, setSubFormat] = useState('srt');
   const [useTranslation, setUseTranslation] = useState(true);
+  const [renderScope, setRenderScope] = useState('single'); // 'single' or 'batch'
+
+  // Calculate batch count
+  const targetBatchCount = React.useMemo(() => {
+    if (selectedQueueIds && selectedQueueIds.length > 0) {
+      return selectedQueueIds.length;
+    }
+    return queue ? queue.length : 0;
+  }, [selectedQueueIds, queue]);
 
   // Check if any subtitle item has Khmer TTS voice generated
   const hasKhmerVoice = React.useMemo(() => {
@@ -228,6 +241,82 @@ export default function ExportModal({
               </div>
             ) : (
               <>
+                {/* 1. Target Scope Switcher (Single vs Batch Multi-Video) */}
+                {queue && queue.length > 1 && (
+                  <div>
+                    <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
+                      Render Scope:
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setRenderScope('single')}
+                        style={{
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${renderScope === 'single' ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                          backgroundColor: renderScope === 'single' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-tertiary)',
+                          color: renderScope === 'single' ? '#ffffff' : 'var(--text-muted)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span>🎬 Current Video (1)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setRenderScope('batch')}
+                        style={{
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${renderScope === 'batch' ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                          backgroundColor: renderScope === 'batch' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-tertiary)',
+                          color: renderScope === 'batch' ? '#ffffff' : 'var(--text-muted)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span>⚡ Batch Queue ({targetBatchCount} Videos)</span>
+                      </button>
+                    </div>
+
+                    {renderScope === 'batch' && (
+                      <div
+                        style={{
+                          padding: '8px 12px',
+                          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          borderRadius: '8px',
+                          fontSize: '11px',
+                          color: '#fca5a5',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '8px',
+                          marginBottom: '8px'
+                        }}
+                      >
+                        <span style={{ fontSize: '14px' }}>⚡</span>
+                        <div style={{ lineHeight: 1.4 }}>
+                          <strong>Batch Render Auto-Pilot:</strong> Will sequentially transcribe, generate Khmer AI voiceover, mute foreign dialogue, burn subtitles, and save all <strong>{targetBatchCount} selected videos</strong> directly into your chosen folder.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div>
                   <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
                     Subtitle Visual Style:
@@ -392,12 +481,12 @@ export default function ExportModal({
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
-                  <button onClick={onClose} className="btn-secondary" disabled={isProcessing}>
+                  <button onClick={onClose} className="btn-secondary" disabled={isProcessing || isBatchRendering}>
                     Cancel
                   </button>
                   <button
-                    onClick={() =>
-                      onRenderBurn({
+                    onClick={() => {
+                      const options = {
                         subtitle_style: stylePreset,
                         use_translation: useTranslation,
                         include_dubbing: includeDubbing,
@@ -405,16 +494,29 @@ export default function ExportModal({
                         add_logo_watermark: addLogoWatermark,
                         background_ducking_volume: duckingVol / 100,
                         use_amf_gpu: useAmfGpu
-                      })
-                    }
+                      };
+                      if (renderScope === 'batch' && onBatchRender) {
+                        onBatchRender(options);
+                        onClose();
+                      } else {
+                        onRenderBurn(options);
+                      }
+                    }}
                     className="btn-primary"
-                    disabled={isProcessing}
+                    disabled={isProcessing || isBatchRendering}
                     style={{
-                      background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)'
+                      background: renderScope === 'batch'
+                        ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                        : 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
+                      boxShadow: renderScope === 'batch'
+                        ? '0 4px 14px rgba(239, 68, 68, 0.4)'
+                        : '0 4px 14px rgba(245, 158, 11, 0.4)'
                     }}
                   >
                     <Flame size={14} />
-                    {isProcessing ? 'Rendering in background...' : 'Start Rendering'}
+                    {renderScope === 'batch'
+                      ? (isBatchRendering ? 'Batch Rendering...' : `Start Batch Render (${targetBatchCount} Videos)`)
+                      : (isProcessing ? 'Rendering in background...' : 'Start Rendering (1 Video)')}
                   </button>
                 </div>
               </>

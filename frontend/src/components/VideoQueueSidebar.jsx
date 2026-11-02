@@ -10,7 +10,10 @@ import {
   Plus,
   RefreshCw,
   Layers,
-  Settings
+  Settings,
+  Flame,
+  Square,
+  Keyboard
 } from 'lucide-react';
 import { formatTime } from '../utils/time_formatter';
 
@@ -23,7 +26,11 @@ export default function VideoQueueSidebar({
   onClearQueue,
   onBatchProcessAll,
   isBatchProcessing = false,
-  onOpenSettings
+  onOpenSettings,
+  onBatchRenderAll,
+  isBatchRendering = false,
+  onCancelBatch,
+  onOpenShortcuts
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const fileInputRef = useRef(null);
@@ -153,17 +160,30 @@ export default function VideoQueueSidebar({
             <RefreshCw size={9} className="animate-spin" /> TTS {item.progress ? `${item.progress}%` : ''}
           </span>
         );
+      case 'rendered':
+        return (
+          <span
+            style={{
+              ...badgeBase,
+              backgroundColor: 'rgba(16, 185, 129, 0.25)',
+              color: '#34d399',
+              border: '1px solid rgba(16, 185, 129, 0.4)'
+            }}
+          >
+            Rendered 🎬
+          </span>
+        );
       case 'rendering':
         return (
           <span
             style={{
               ...badgeBase,
-              backgroundColor: 'rgba(244, 63, 94, 0.2)',
-              color: '#fda4af',
-              border: '1px solid rgba(244, 63, 94, 0.3)'
+              backgroundColor: 'rgba(245, 158, 11, 0.2)',
+              color: '#fcd34d',
+              border: '1px solid rgba(245, 158, 11, 0.4)'
             }}
           >
-            <RefreshCw size={9} className="animate-spin" /> Burning
+            <RefreshCw size={9} className="animate-spin" /> Render {item.progress ? `${item.progress}%` : ''}
           </span>
         );
       case 'uploading':
@@ -246,6 +266,8 @@ export default function VideoQueueSidebar({
         ? '#3b82f6'
         : item.status === 'dubbing'
         ? '#a855f7'
+        : item.status === 'rendering'
+        ? '#f59e0b'
         : '#ef4444';
 
     return (
@@ -326,6 +348,25 @@ export default function VideoQueueSidebar({
           title="Studio Settings & Themes (ប្តូរ Theme)"
         >
           <Settings size={15} />
+        </button>
+
+        <button
+          onClick={onOpenShortcuts}
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
+            backgroundColor: 'var(--bg-hover)',
+            border: '1px solid var(--border-light)',
+            color: 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer'
+          }}
+          title="Keyboard Shortcuts Cheat Sheet (?)"
+        >
+          <Keyboard size={15} />
         </button>
 
         <button
@@ -506,6 +547,25 @@ export default function VideoQueueSidebar({
             <Settings size={13} />
           </button>
           <button
+            onClick={onOpenShortcuts}
+            style={{
+              width: '26px',
+              height: '26px',
+              borderRadius: '6px',
+              backgroundColor: 'var(--bg-hover)',
+              border: '1px solid var(--border-light)',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            title="Keyboard Shortcuts Cheat Sheet (?)"
+          >
+            <Keyboard size={13} />
+          </button>
+          <button
             onClick={() => fileInputRef.current && fileInputRef.current.click()}
             style={{
               width: '26px',
@@ -617,7 +677,7 @@ export default function VideoQueueSidebar({
       {/* 3. Batch Mode Processing Controls Bar */}
       <div
         style={{
-          padding: '0 12px 8px 12px',
+          padding: '0 10px 8px 10px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -630,7 +690,7 @@ export default function VideoQueueSidebar({
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '5px',
             cursor: queue.length === 0 ? 'not-allowed' : 'pointer',
             userSelect: 'none'
           }}
@@ -648,40 +708,89 @@ export default function VideoQueueSidebar({
               height: '13px'
             }}
           />
-          <span style={{ color: selectedQueueIds.length > 0 ? '#e5e7eb' : '#6b7280', fontWeight: 500 }}>
+          <span style={{ color: selectedQueueIds.length > 0 ? '#e5e7eb' : '#6b7280', fontWeight: 600, fontSize: '10px' }}>
             {selectedQueueIds.length === queue.length && queue.length > 0
               ? `All (${queue.length})`
-              : `${selectedQueueIds.length}/${queue.length} selected`}
+              : `${selectedQueueIds.length}/${queue.length}`}
           </span>
         </label>
 
-        <button
-          onClick={() => onBatchProcessAll(selectedQueueIds)}
-          disabled={isBatchProcessing || queue.length === 0 || selectedQueueIds.length === 0}
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: isBatchProcessing || selectedQueueIds.length === 0 ? '#6b7280' : '#ef4444',
-            backgroundColor: selectedQueueIds.length > 0 && !isBatchProcessing ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
-            padding: '3px 8px',
-            borderRadius: '6px',
-            border: selectedQueueIds.length > 0 && !isBatchProcessing ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid transparent',
-            cursor: isBatchProcessing || queue.length === 0 || selectedQueueIds.length === 0 ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            transition: 'all 0.15s ease'
-          }}
-          title="Run Whisper STT, Khmer translation, and Edge-TTS Dubbing for selected videos"
-        >
-          {isBatchProcessing ? (
-            <>
-              <RefreshCw size={10} className="animate-spin" /> Processing...
-            </>
-          ) : (
-            `Run ${selectedQueueIds.length === queue.length ? 'All' : 'Selected'} (${selectedQueueIds.length}) ▶`
-          )}
-        </button>
+        {isBatchProcessing || isBatchRendering ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '10px', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
+              <RefreshCw size={10} className="animate-spin" />
+              {isBatchRendering ? 'Rendering...' : 'Processing...'}
+            </span>
+            {onCancelBatch && (
+              <button
+                onClick={onCancelBatch}
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  color: '#f87171',
+                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px'
+                }}
+                title="Stop batch processing"
+              >
+                <Square size={9} fill="#f87171" /> Stop
+              </button>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <button
+              onClick={() => onBatchProcessAll(selectedQueueIds)}
+              disabled={queue.length === 0 || selectedQueueIds.length === 0}
+              style={{
+                fontSize: '10px',
+                fontWeight: 600,
+                color: selectedQueueIds.length > 0 ? '#c084fc' : '#6b7280',
+                backgroundColor: selectedQueueIds.length > 0 ? 'rgba(168, 85, 247, 0.12)' : 'transparent',
+                padding: '3px 6px',
+                borderRadius: '5px',
+                border: selectedQueueIds.length > 0 ? '1px solid rgba(168, 85, 247, 0.3)' : '1px solid transparent',
+                cursor: selectedQueueIds.length === 0 ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px',
+                transition: 'all 0.15s ease'
+              }}
+              title="Run Whisper STT, Khmer translation & Edge-TTS Dubbing for selected"
+            >
+              🎙️ Dub ({selectedQueueIds.length})
+            </button>
+
+            <button
+              onClick={() => onBatchRenderAll && onBatchRenderAll(selectedQueueIds)}
+              disabled={queue.length === 0 || selectedQueueIds.length === 0}
+              style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                color: selectedQueueIds.length > 0 ? '#ffffff' : '#6b7280',
+                background: selectedQueueIds.length > 0 ? 'linear-gradient(135deg, #ef4444 0%, #ea580c 100%)' : '#374151',
+                padding: '3px 8px',
+                borderRadius: '5px',
+                border: 'none',
+                cursor: selectedQueueIds.length === 0 ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px',
+                boxShadow: selectedQueueIds.length > 0 ? '0 2px 8px rgba(239, 68, 68, 0.3)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+              title="One-Click Batch Render: Auto STT + TTS + Burn Subtitles & Mute foreign voice -> Export MP4s to folder"
+            >
+              <Flame size={10} /> Render ({selectedQueueIds.length})
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 4. Video Queue Items List */}
