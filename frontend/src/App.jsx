@@ -33,6 +33,32 @@ import VideoQueueSidebar from './components/VideoQueueSidebar';
 import { formatTime } from './utils/time_formatter';
 import { getStoredTheme, getStoredAccent, applyTheme } from './utils/theme';
 
+const extractErrorMessage = (errorData, defaultMsg = 'Operation failed') => {
+  if (!errorData) return defaultMsg;
+  const detail = errorData.detail || errorData.message || errorData.error;
+  if (!detail) return defaultMsg;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => {
+        if (typeof d === 'string') return d;
+        if (d && typeof d === 'object') {
+          if (d.loc && d.msg) {
+            const field = Array.isArray(d.loc) ? d.loc.filter((p) => p !== 'body').join('.') : String(d.loc);
+            return field ? `${field}: ${d.msg}` : d.msg;
+          }
+          return d.msg || d.message || JSON.stringify(d);
+        }
+        return String(d);
+      })
+      .join('; ');
+  }
+  if (typeof detail === 'object') {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  return String(detail);
+};
+
 export default function App() {
   // Multi-Video Queue State
   const [videoQueue, setVideoQueue] = useState([]);
@@ -105,6 +131,32 @@ export default function App() {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
 
+  // Subtitle custom styling & position settings (Persisted)
+  const [subSettings, setSubSettings] = useState(() => {
+    const DEFAULT_SUB_SETTINGS = {
+      subtitleMode: 'khmer',
+      fontSize: 24,
+      position: 'bottom',
+      verticalOffset: 55,
+      stylePreset: 'modern_yellow'
+    };
+    try {
+      const saved = localStorage.getItem('mk_sub_settings');
+      if (saved) return { ...DEFAULT_SUB_SETTINGS, ...JSON.parse(saved) };
+    } catch (e) { }
+    return DEFAULT_SUB_SETTINGS;
+  });
+
+  const handleUpdateSubSettings = (newSettings) => {
+    setSubSettings((prev) => {
+      const updated = { ...prev, ...newSettings };
+      try {
+        localStorage.setItem('mk_sub_settings', JSON.stringify(updated));
+      } catch (e) { }
+      return updated;
+    });
+  };
+
   // Theme & Accent State with LocalStorage Persistence
   const [currentTheme, setCurrentTheme] = useState(() => getStoredTheme());
   const [currentAccent, setCurrentAccent] = useState(() => getStoredAccent());
@@ -125,7 +177,7 @@ export default function App() {
       const res = await fetch('/api/storage/usage');
       const data = await res.json();
       setStorageUsage(data);
-    } catch (e) {}
+    } catch (e) { }
   };
 
   useEffect(() => {
@@ -151,7 +203,7 @@ export default function App() {
     if (bgmAudioRef.current) {
       if (bgmAudioRef.current.paused) {
         bgmAudioRef.current.currentTime = currentTime % (bgmAudioRef.current.duration || 1);
-        bgmAudioRef.current.play().catch(() => {});
+        bgmAudioRef.current.play().catch(() => { });
       }
     }
 
@@ -173,7 +225,7 @@ export default function App() {
           if (Math.abs(audioObj.currentTime - offset) > 0.25) {
             audioObj.currentTime = offset;
           }
-          audioObj.play().catch(() => {});
+          audioObj.play().catch(() => { });
         }
       } else {
         if (!audioObj.paused) {
@@ -263,14 +315,14 @@ export default function App() {
           prev.map((v) =>
             v.id === item.id
               ? {
-                  ...v,
-                  url: data.url,
-                  serverFilename: data.filename,
-                  name: data.name || data.filename,
-                  duration: duration,
-                  status: 'idle',
-                  progress: 0
-                }
+                ...v,
+                url: data.url,
+                serverFilename: data.filename,
+                name: data.name || data.filename,
+                duration: duration,
+                status: 'idle',
+                progress: 0
+              }
               : v
           )
         );
@@ -517,11 +569,11 @@ export default function App() {
           prev.map((v) =>
             v.id === currentItem.id
               ? {
-                  ...v,
-                  status: 'completed',
-                  progress: 100,
-                  subtitles: items
-                }
+                ...v,
+                status: 'completed',
+                progress: 100,
+                subtitles: items
+              }
               : v
           )
         );
@@ -597,8 +649,13 @@ export default function App() {
 
     const isCustomObject = customOptions && typeof customOptions === 'object' && !customOptions.nativeEvent;
     const renderOpts = {
-      subtitle_style: isCustomObject?.subtitle_style || 'modern_yellow',
-      use_translation: isCustomObject?.use_translation !== undefined ? isCustomObject.use_translation : true,
+      subtitle_style: isCustomObject?.subtitle_style || subSettings.stylePreset || 'modern_yellow',
+      font_size: isCustomObject?.font_size || subSettings.fontSize || 24,
+      subtitle_position: isCustomObject?.subtitle_position || subSettings.position || 'bottom',
+      vertical_offset: isCustomObject?.vertical_offset !== undefined ? isCustomObject.vertical_offset : (subSettings.verticalOffset || 55),
+      subtitle_mode: isCustomObject?.subtitle_mode || subSettings.subtitleMode || 'khmer',
+      burn_subtitles: isCustomObject?.burn_subtitles !== undefined ? isCustomObject.burn_subtitles : (subSettings.subtitleMode !== 'none'),
+      use_translation: isCustomObject?.use_translation !== undefined ? isCustomObject.use_translation : (subSettings.subtitleMode === 'khmer'),
       include_dubbing: isCustomObject?.include_dubbing !== undefined ? isCustomObject.include_dubbing : true,
       mute_original_audio: isCustomObject?.mute_original_audio !== undefined ? isCustomObject.mute_original_audio : true,
       add_logo_watermark: Boolean(isCustomObject?.add_logo_watermark),
@@ -715,7 +772,7 @@ export default function App() {
                 });
               }
             }
-          } catch (e) {}
+          } catch (e) { }
         }, 500);
 
         const burnRes = await fetch('/api/render/burn', {
@@ -735,7 +792,7 @@ export default function App() {
 
         if (!burnRes.ok) {
           const errData = await burnRes.json().catch(() => ({}));
-          throw new Error(errData.detail || `Render server error ${burnRes.status}`);
+          throw new Error(extractErrorMessage(errData, `Render server error ${burnRes.status}`));
         }
 
         const burnData = await burnRes.json();
@@ -766,13 +823,13 @@ export default function App() {
           prev.map((v) =>
             v.id === currentItem.id
               ? {
-                  ...v,
-                  status: 'rendered',
-                  progress: 100,
-                  subtitles: items,
-                  export_url: burnData.download_url,
-                  export_filename: outputFilename
-                }
+                ...v,
+                status: 'rendered',
+                progress: 100,
+                subtitles: items,
+                export_url: burnData.download_url,
+                export_filename: outputFilename
+              }
               : v
           )
         );
@@ -858,7 +915,7 @@ export default function App() {
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || `Server returned ${res.status}`);
+        throw new Error(extractErrorMessage(errData, `Server returned ${res.status}`));
       }
       const data = await res.json();
       setCleanBgmUrl(data.instrumental_url);
@@ -947,19 +1004,40 @@ export default function App() {
   };
 
   // Generate audio for selected items (using Edge-TTS)
-  const handleGenerateSelectedAudio = async () => {
+  const handleGenerateSelectedAudio = async (mode = null) => {
     if (subtitles.length === 0) {
       alert('No subtitles found. Please transcribe or import subtitles first.');
       return;
     }
 
-    // Smart Target: If user selected a specific subset, generate for them; otherwise generate for ALL subtitles!
-    const isSubset = selectedIds.length > 0 && selectedIds.length < subtitles.length;
-    const targets = isSubset
-      ? subtitles.filter((s) => selectedIds.includes(s.id))
-      : subtitles;
+    // Determine target items based on explicit mode or current selection
+    const targetMode = typeof mode === 'string' ? mode : (mode?.mode || null);
+    let targets = subtitles;
+    if (targetMode === 'selected') {
+      targets = selectedIds.length > 0 ? subtitles.filter((s) => selectedIds.includes(s.id)) : subtitles;
+    } else if (targetMode === 'all') {
+      targets = subtitles;
+    } else {
+      const isSubset = selectedIds.length > 0 && selectedIds.length < subtitles.length;
+      targets = isSubset ? subtitles.filter((s) => selectedIds.includes(s.id)) : subtitles;
+    }
+
+    if (targets.length === 0) {
+      alert('No subtitle lines to generate audio for.');
+      return;
+    }
 
     const targetIdSet = new Set(targets.map((t) => t.id));
+
+    // Invalidate stale cached audio for these targets so new audio is picked up immediately
+    targets.forEach((t) => {
+      if (audioSyncCache.current[t.id]) {
+        try {
+          audioSyncCache.current[t.id].pause();
+        } catch (_) { }
+        delete audioSyncCache.current[t.id];
+      }
+    });
 
     setIsGeneratingAudio(true);
     setStatusMessage(`Generating audio for ${targets.length} lines (Khmer Neural Voice)...`);
@@ -973,11 +1051,24 @@ export default function App() {
     );
 
     try {
+      const sanitizedTargets = targets.map((item, idx) => ({
+        id: String(item.id || `sub_${idx + 1}`),
+        index: typeof item.index === 'number' ? item.index : idx + 1,
+        start_time: typeof item.start_time === 'number' ? item.start_time : parseFloat(item.start_time) || 0,
+        end_time: typeof item.end_time === 'number' ? item.end_time : parseFloat(item.end_time) || 0,
+        text: item.text !== undefined && item.text !== null ? String(item.text) : '',
+        translated_text: item.translated_text || null,
+        gender: item.gender || 'Female',
+        audio_status: item.audio_status || 'idle',
+        speed: typeof item.speed === 'number' ? item.speed : 1.0,
+        speaker: item.speaker || 'Narrator'
+      }));
+
       const res = await fetch('/api/tts/generate-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: targets,
+          items: sanitizedTargets,
           use_translation: true,
           voice_male: 'km-KH-PisethNeural',
           voice_female: 'km-KH-SreymomNeural',
@@ -987,7 +1078,8 @@ export default function App() {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || `Server returned error ${res.status}`);
+        const errMsg = extractErrorMessage(errData, `Server returned error ${res.status}`);
+        throw new Error(errMsg);
       }
 
       const data = await res.json();
@@ -995,6 +1087,12 @@ export default function App() {
         const lookup = {};
         data.items.forEach((it) => {
           lookup[it.id] = it;
+          if (audioSyncCache.current[it.id]) {
+            try {
+              audioSyncCache.current[it.id].pause();
+            } catch (_) { }
+            delete audioSyncCache.current[it.id];
+          }
         });
         const updated = subtitles.map((s) => (lookup[s.id] ? { ...s, ...lookup[s.id] } : s));
         setSubtitles(updated);
@@ -1044,7 +1142,7 @@ export default function App() {
     if (currentAudioRef.current) {
       try {
         currentAudioRef.current.pause();
-      } catch (e) {}
+      } catch (e) { }
       currentAudioRef.current = null;
     }
 
@@ -1091,7 +1189,7 @@ export default function App() {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Server returned error ${res.status}`);
+        throw new Error(extractErrorMessage(errorData, `Server returned error ${res.status}`));
       }
 
       const data = await res.json();
@@ -1126,11 +1224,28 @@ export default function App() {
       return;
     }
 
-    // Determine targets: translate selected subset, or all lines if all/none selected
-    const isSubset = selectedIds.length > 0 && selectedIds.length < subtitles.length;
-    const targetItems = isSubset
-      ? subtitles.filter((s) => selectedIds.includes(s.id))
-      : subtitles;
+    const options = typeof params === 'string' ? { mode: params } : (params || {});
+    const targetMode = options.mode || null;
+
+    let targetItems = subtitles;
+    if (targetMode === 'selected') {
+      targetItems = selectedIds.length > 0 ? subtitles.filter((s) => selectedIds.includes(s.id)) : subtitles;
+    } else if (targetMode === 'all') {
+      targetItems = subtitles;
+    } else {
+      const isSubset = selectedIds.length > 0 && selectedIds.length < subtitles.length;
+      targetItems = isSubset ? subtitles.filter((s) => selectedIds.includes(s.id)) : subtitles;
+    }
+
+    if (targetItems.length === 0) {
+      alert('No subtitle lines to translate.');
+      return;
+    }
+
+    const provider = options.provider || 'google_free';
+    const sourceLang = options.source_lang || 'auto';
+    const targetLang = options.target_lang || 'km';
+    const geminiApiKey = options.gemini_api_key || null;
 
     setIsTranslating(true);
     setStatusMessage(`Translating ${targetItems.length} lines to Khmer...`);
@@ -1140,21 +1255,35 @@ export default function App() {
     });
 
     try {
+      const sanitizedPayload = targetItems.map((item, idx) => ({
+        id: String(item.id || `sub_${idx + 1}`),
+        index: typeof item.index === 'number' ? item.index : idx + 1,
+        start_time: typeof item.start_time === 'number' ? item.start_time : parseFloat(item.start_time) || 0,
+        end_time: typeof item.end_time === 'number' ? item.end_time : parseFloat(item.end_time) || 0,
+        text: item.text !== undefined && item.text !== null ? String(item.text) : '',
+        translated_text: item.translated_text || null,
+        gender: item.gender || 'Female',
+        audio_status: item.audio_status || 'idle',
+        speed: typeof item.speed === 'number' ? item.speed : 1.0,
+        speaker: item.speaker || 'Narrator'
+      }));
+
       const res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: targetItems,
-          provider: params?.provider || 'google_free',
-          source_lang: params?.source_lang || 'auto',
-          target_lang: params?.target_lang || 'km',
-          gemini_api_key: params?.gemini_api_key || null
+          items: sanitizedPayload,
+          provider: provider,
+          source_lang: sourceLang,
+          target_lang: targetLang,
+          gemini_api_key: geminiApiKey
         })
       });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Server returned status ${res.status}`);
+        const errMsg = extractErrorMessage(errorData, `Server returned status ${res.status}`);
+        throw new Error(errMsg);
       }
 
       const data = await res.json();
@@ -1437,8 +1566,13 @@ export default function App() {
       }
 
       const smartOptions = {
-        subtitle_style: 'modern_yellow',
-        use_translation: true,
+        subtitle_style: subSettings.stylePreset || 'modern_yellow',
+        font_size: subSettings.fontSize || 24,
+        subtitle_position: subSettings.position || 'bottom',
+        vertical_offset: subSettings.verticalOffset || 55,
+        subtitle_mode: subSettings.subtitleMode || 'khmer',
+        burn_subtitles: subSettings.subtitleMode !== 'none',
+        use_translation: subSettings.subtitleMode === 'khmer',
         include_dubbing: wantDubbing,
         mute_original_audio: wantDubbing ? wantMuteOriginal : false,
         add_logo_watermark: false,
@@ -1467,7 +1601,7 @@ export default function App() {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Server error ${res.status}`);
+        throw new Error(extractErrorMessage(errorData, `Server error ${res.status}`));
       }
 
       const data = await res.json();
@@ -1648,6 +1782,7 @@ export default function App() {
         const newEnd = parseFloat((currentTime + 2.5).toFixed(2));
         const newItem = {
           id: newId,
+          index: subtitles.length + 1,
           start_time: newStart,
           end_time: newEnd,
           text: '',
@@ -1908,28 +2043,43 @@ export default function App() {
                     onClick={togglePlay}
                   />
 
-                  {/* Subtitle Overlay */}
-                  {activeSub && (
+                  {/* Subtitle Overlay with Live Preview of Size, Position & Style */}
+                  {activeSub && subSettings.subtitleMode !== 'none' && (
                     <div
                       className="font-khmer"
                       style={{
                         position: 'absolute',
-                        bottom: '8px',
                         left: '50%',
-                        transform: 'translateX(-50%)',
-                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-                        color: '#facc15',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        padding: '3px 8px',
+                        transform: subSettings.position === 'middle' ? 'translate(-50%, -50%)' : 'translateX(-50%)',
+                        ...(subSettings.position === 'top'
+                          ? { top: `${Math.max(6, Math.min(48, Math.round((subSettings.verticalOffset || 55) * 0.28)))}px` }
+                          : subSettings.position === 'middle'
+                            ? { top: '50%' }
+                            : { bottom: `${Math.max(6, Math.min(48, Math.round((subSettings.verticalOffset || 55) * 0.28)))}px` }
+                        ),
+                        backgroundColor: subSettings.stylePreset === 'box_dark'
+                          ? 'rgba(0, 0, 0, 0.92)'
+                          : 'rgba(0, 0, 0, 0.75)',
+                        color: subSettings.stylePreset === 'modern_yellow'
+                          ? '#facc15'
+                          : '#ffffff',
+                        fontSize: `${Math.max(10, Math.min(18, Math.round((subSettings.fontSize || 24) * 0.55)))}px`,
+                        fontWeight: 700,
+                        padding: '2px 8px',
                         borderRadius: '4px',
                         textAlign: 'center',
-                        maxWidth: '90%',
+                        maxWidth: '92%',
                         pointerEvents: 'none',
-                        lineHeight: 1.3
+                        lineHeight: 1.3,
+                        boxShadow: subSettings.stylePreset === 'box_dark' ? '0 2px 6px rgba(0,0,0,0.8)' : 'none',
+                        textShadow: subSettings.stylePreset === 'classic_white'
+                          ? '1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000'
+                          : '1px 1px 2px rgba(0,0,0,0.8)'
                       }}
                     >
-                      {activeSub.translated_text || activeSub.text}
+                      {subSettings.subtitleMode === 'original'
+                        ? (activeSub.text || '')
+                        : (activeSub.translated_text || activeSub.text || '')}
                     </div>
                   )}
                 </>
@@ -2027,6 +2177,27 @@ export default function App() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button
+                    onClick={() => {
+                      setExportType('burn');
+                      setExportModalOpen(true);
+                    }}
+                    className="btn-secondary"
+                    style={{
+                      padding: '3px 7px',
+                      fontSize: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: subSettings.subtitleMode === 'none' ? 'var(--text-muted)' : '#f59e0b',
+                      borderColor: subSettings.subtitleMode === 'none' ? 'var(--border-color)' : 'rgba(245, 158, 11, 0.4)'
+                    }}
+                    title="Subtitle Settings: Customize text size, position & style"
+                  >
+                    <Sliders size={11} />
+                    <span>Subs ({subSettings.subtitleMode === 'none' ? 'Off' : `${subSettings.fontSize}px`})</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       if (videoRef.current) {
@@ -2161,21 +2332,20 @@ export default function App() {
                       renderToast.type === 'success'
                         ? 'rgba(16, 185, 129, 0.2)'
                         : renderToast.type === 'error'
-                        ? 'rgba(239, 68, 68, 0.2)'
-                        : 'rgba(59, 130, 246, 0.2)',
+                          ? 'rgba(239, 68, 68, 0.2)'
+                          : 'rgba(59, 130, 246, 0.2)',
                     color:
                       renderToast.type === 'success'
                         ? '#34d399'
                         : renderToast.type === 'error'
-                        ? '#f87171'
-                        : '#60a5fa',
-                    border: `1px solid ${
-                      renderToast.type === 'success'
+                          ? '#f87171'
+                          : '#60a5fa',
+                    border: `1px solid ${renderToast.type === 'success'
                         ? 'rgba(16, 185, 129, 0.4)'
                         : renderToast.type === 'error'
-                        ? 'rgba(239, 68, 68, 0.4)'
-                        : 'rgba(59, 130, 246, 0.4)'
-                    }`
+                          ? 'rgba(239, 68, 68, 0.4)'
+                          : 'rgba(59, 130, 246, 0.4)'
+                      }`
                   }}
                 >
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2225,8 +2395,8 @@ export default function App() {
                     background: isRendering
                       ? '#1e3a8a'
                       : lastRenderedVideo
-                      ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
-                      : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                        ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+                        : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                     color: '#ffffff',
                     boxShadow: isRendering ? 'none' : '0 4px 12px rgba(239, 68, 68, 0.3)',
                     transition: 'all 0.15s ease'
@@ -2376,13 +2546,13 @@ export default function App() {
             onSeekTime={setCurrentTime}
             onPlayAudioItem={handlePlayAudioItem}
             playingAudioId={playingAudioId}
-            onTranslateClick={() => handleStartTranslate({ provider: 'google_free' })}
+            onTranslateClick={(mode) => handleStartTranslate({ provider: 'google_free', mode })}
             onOpenTranslateModal={() => {
               setAiModalMode('translate');
               setAiModalOpen(true);
             }}
             isTranslating={isTranslating}
-            onGenerateAudioClick={handleGenerateSelectedAudio}
+            onGenerateAudioClick={(mode) => handleGenerateSelectedAudio(mode)}
             isGeneratingAudio={isGeneratingAudio}
           />
         </div>
@@ -2401,15 +2571,11 @@ export default function App() {
           setAiModalMode('whisper');
           setAiModalOpen(true);
         }}
-        onTranslateClick={() => handleStartTranslate({ provider: 'google_free' })}
-        isTranslating={isTranslating}
-        onGenerateAudioClick={handleGenerateSelectedAudio}
         onUpdateSubtitle={handleUpdateSubtitle}
         onClearTrack={handleClearTrack}
         onPlayAudioItem={handlePlayAudioItem}
         playingAudioId={playingAudioId}
         isTranscribing={isTranscribing}
-        isGeneratingAudio={isGeneratingAudio}
         onRemoveVocalsClick={handleRemoveVocals}
         isRemovingVocals={isRemovingVocals}
         hasCleanBgm={Boolean(cleanBgmUrl)}
@@ -2497,6 +2663,9 @@ export default function App() {
         queue={videoQueue}
         onBatchRender={handleBatchRenderVideos}
         isBatchRendering={isBatchRendering}
+        subSettings={subSettings}
+        onUpdateSubSettings={handleUpdateSubSettings}
+        onResetRenderResult={() => setBurnResult(null)}
       />
 
       <SettingsModal

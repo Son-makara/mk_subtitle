@@ -180,6 +180,8 @@ def export_ass(
     font_size: Optional[int] = None,
     primary_color: Optional[str] = None,
     outline_color: Optional[str] = None,
+    alignment: int = 2,
+    margin_v: Optional[int] = None,
     play_res_x: int = 1920,
     play_res_y: int = 1080
 ) -> str:
@@ -200,30 +202,45 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
     default_khmer_fonts = "Kantumruy Pro, Kantumruy, Khmer OS Siemreap, Leelawadee UI, Segoe UI, Arial"
     chosen_font = font_name if font_name else default_khmer_fonts
     
-    # Scale default font size if vertical portrait resolution
+    # Scale default font size and margins proportionally to ASS canvas height (play_res_y)
     is_portrait = play_res_y > play_res_x
-    base_font_scale = 1.15 if is_portrait else 1.0
+    height_scale = play_res_y / 1080.0
+    portrait_boost = 1.15 if is_portrait else 1.0
 
-    size_my = font_size or int(52 * base_font_scale)
+    raw_font_size = font_size if (font_size and font_size > 0) else 24
+    if raw_font_size > 60:
+        # User supplied a raw ASS point size directly
+        calculated_size = int(raw_font_size * height_scale)
+    else:
+        # Scale frontend size (16-64) to ASS canvas height with Khmer typography compensation
+        calculated_size = int(raw_font_size * 2.6 * height_scale * portrait_boost)
+
+    size_my = calculated_size
     p_col_my = primary_color or "&H0000FFFF"
     o_col_my = outline_color or "&H00000000"
-    size_bd = font_size or int(48 * base_font_scale)
+    size_bd = calculated_size
     p_col_bd = primary_color or "&H00FFFFFF"
     o_col_bd = outline_color or "&H00000000"
-    size_cw = font_size or int(50 * base_font_scale)
+    size_cw = calculated_size
     p_col_cw = primary_color or "&H00FFFFFF"
     o_col_cw = outline_color or "&H00000000"
 
-    margin_v = 90 if is_portrait else 55
+    raw_margin = margin_v if (margin_v is not None and margin_v > 0) else (90 if is_portrait else 55)
+    actual_margin_v = int(raw_margin * height_scale)
+    actual_align = alignment if alignment in [2, 5, 8] else 2
+
+    outline_val = max(2, int(3.5 * height_scale * (1.15 if is_portrait else 1.0)))
+    shadow_val = max(1, int(2.0 * height_scale))
+    margin_lr = int(40 * height_scale)
 
     # Style definitions
     # ASS Hex colors: &HAABBGGRR (Alpha, Blue, Green, Red)
     if style_preset == "modern_yellow":
-        style_line = f"Style: Default,{chosen_font},{size_my},{p_col_my},&H000000FF,{o_col_my},&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,40,40,{margin_v},1"
+        style_line = f"Style: Default,{chosen_font},{size_my},{p_col_my},&H000000FF,{o_col_my},&H80000000,-1,0,0,0,100,100,0,0,1,{outline_val},{shadow_val},{actual_align},{margin_lr},{margin_lr},{actual_margin_v},1"
     elif style_preset == "box_dark":
-        style_line = f"Style: Default,{chosen_font},{size_bd},{p_col_bd},&H000000FF,{o_col_bd},&H90000000,-1,0,0,0,100,100,0,0,3,2,1,2,30,30,{margin_v},1"
+        style_line = f"Style: Default,{chosen_font},{size_bd},{p_col_bd},&H000000FF,{o_col_bd},&H90000000,-1,0,0,0,100,100,0,0,3,{max(2, outline_val - 1)},1,{actual_align},{int(margin_lr * 0.75)},{int(margin_lr * 0.75)},{actual_margin_v},1"
     else: # classic_white
-        style_line = f"Style: Default,{chosen_font},{size_cw},{p_col_cw},&H000000FF,{o_col_cw},&H60000000,-1,0,0,0,100,100,0,0,1,3,2,2,40,40,{margin_v},1"
+        style_line = f"Style: Default,{chosen_font},{size_cw},{p_col_cw},&H000000FF,{o_col_cw},&H60000000,-1,0,0,0,100,100,0,0,1,{outline_val},{shadow_val},{actual_align},{margin_lr},{margin_lr},{actual_margin_v},1"
 
     body = [header, style_line, "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
     for item in items:

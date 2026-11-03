@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2 } from 'lucide-react';
+import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye } from 'lucide-react';
 
 export default function ExportModal({
   isOpen,
@@ -14,11 +14,75 @@ export default function ExportModal({
   queue = [],
   selectedQueueIds = [],
   onBatchRender,
-  isBatchRendering = false
+  isBatchRendering = false,
+  subSettings,
+  onUpdateSubSettings,
+  onResetRenderResult
 }) {
   const [subFormat, setSubFormat] = useState('srt');
   const [useTranslation, setUseTranslation] = useState(true);
   const [renderScope, setRenderScope] = useState('single'); // 'single' or 'batch'
+
+  // Switch between 'settings' (edit styles) and 'result' (download/save finished video)
+  const [viewMode, setViewMode] = useState('settings');
+  const prevResultRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (downloadResult) {
+      if (downloadResult !== prevResultRef.current) {
+        setViewMode('result');
+        prevResultRef.current = downloadResult;
+      }
+    } else {
+      setViewMode('settings');
+    }
+  }, [downloadResult]);
+
+  // Subtitle settings state with sync to parent & localStorage
+  const [subtitleMode, setSubtitleMode] = useState(subSettings?.subtitleMode || 'khmer');
+  const [fontSize, setFontSize] = useState(subSettings?.fontSize || 24);
+  const [position, setPosition] = useState(subSettings?.position || 'bottom');
+  const [verticalOffset, setVerticalOffset] = useState(subSettings?.verticalOffset || 55);
+  const [stylePreset, setStylePreset] = useState(subSettings?.stylePreset || 'modern_yellow');
+
+  // Synchronize state if subSettings prop changes
+  React.useEffect(() => {
+    if (subSettings) {
+      if (subSettings.subtitleMode !== undefined) setSubtitleMode(subSettings.subtitleMode);
+      if (subSettings.fontSize !== undefined) setFontSize(subSettings.fontSize);
+      if (subSettings.position !== undefined) setPosition(subSettings.position);
+      if (subSettings.verticalOffset !== undefined) setVerticalOffset(subSettings.verticalOffset);
+      if (subSettings.stylePreset !== undefined) setStylePreset(subSettings.stylePreset);
+    }
+  }, [subSettings]);
+
+  const updateSettings = (partial) => {
+    const updated = {
+      subtitleMode: partial.subtitleMode !== undefined ? partial.subtitleMode : subtitleMode,
+      fontSize: partial.fontSize !== undefined ? partial.fontSize : fontSize,
+      position: partial.position !== undefined ? partial.position : position,
+      verticalOffset: partial.verticalOffset !== undefined ? partial.verticalOffset : verticalOffset,
+      stylePreset: partial.stylePreset !== undefined ? partial.stylePreset : stylePreset,
+    };
+    if (partial.subtitleMode !== undefined) setSubtitleMode(partial.subtitleMode);
+    if (partial.fontSize !== undefined) setFontSize(partial.fontSize);
+    if (partial.position !== undefined) setPosition(partial.position);
+    if (partial.verticalOffset !== undefined) setVerticalOffset(partial.verticalOffset);
+    if (partial.stylePreset !== undefined) setStylePreset(partial.stylePreset);
+    if (onUpdateSubSettings) {
+      onUpdateSubSettings(updated);
+    }
+  };
+
+  // Sample text for live preview
+  const sampleSubtitleText = React.useMemo(() => {
+    if (subtitleMode === 'none') return '';
+    const firstItem = subtitles && subtitles.length > 0 ? subtitles[0] : null;
+    if (subtitleMode === 'original') {
+      return firstItem?.text || '你好，欢迎来到MK影视！';
+    }
+    return firstItem?.translated_text || firstItem?.text || 'ជំរាបសួរ! សូមស្វាគមន៍មកកាន់ MK Movie Studio!';
+  }, [subtitles, subtitleMode]);
 
   // Calculate batch count
   const targetBatchCount = React.useMemo(() => {
@@ -36,7 +100,6 @@ export default function ExportModal({
   }, [subtitles]);
 
   // Burn options: Default dubbing and muting enabled by default
-  const [stylePreset, setStylePreset] = useState('modern_yellow');
   const [includeDubbing, setIncludeDubbing] = useState(true);
   const [muteOriginalAudio, setMuteOriginalAudio] = useState(true);
   const [duckingVol, setDuckingVol] = useState(25);
@@ -59,17 +122,65 @@ export default function ExportModal({
 
   return (
     <div className="modal-overlay">
-      <div className="modal-card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+      <div className="modal-card" style={{ maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', gap: '8px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <img src="/logo.png" alt="MK" style={{ width: '24px', height: '24px', borderRadius: '50%', border: '1px solid #ef4444' }} />
             <h3 style={{ fontSize: '18px', fontWeight: 600 }}>
               {type === 'subs' ? 'Export Subtitles' : 'Burn & Render MP4 Video'}
             </h3>
           </div>
-          <button onClick={onClose} className="btn-secondary" style={{ padding: '4px 8px' }}>
-            <X size={16} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {type === 'burn' && downloadResult && (
+              <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--bg-base)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('settings')}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: 'none',
+                    backgroundColor: viewMode === 'settings' ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
+                    color: viewMode === 'settings' ? '#ffffff' : 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                  title="Customize subtitle text size, font, position and visual style"
+                >
+                  <Sliders size={12} style={{ color: '#f59e0b' }} />
+                  <span>Subtitle Style</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('result')}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: 'none',
+                    backgroundColor: viewMode === 'result' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+                    color: viewMode === 'result' ? '#10b981' : 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                  title="View ready video download and save options"
+                >
+                  <Check size={12} />
+                  <span>Finished Video</span>
+                </button>
+              </div>
+            )}
+            <button onClick={onClose} className="btn-secondary" style={{ padding: '4px 8px' }}>
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {type === 'subs' ? (
@@ -125,7 +236,7 @@ export default function ExportModal({
         ) : (
           /* ================= Video Burn Render Form ================= */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {downloadResult ? (
+            {downloadResult && viewMode === 'result' ? (
               <div
                 style={{
                   padding: '24px',
@@ -217,6 +328,31 @@ export default function ExportModal({
                     <Download size={16} /> Direct Download
                   </a>
 
+                  {/* Back to Edit Subtitle Style & Re-render */}
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('settings')}
+                    style={{
+                      padding: '11px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-tertiary)',
+                      color: 'var(--text-bright)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Change subtitle font, size, position, or colors and re-render"
+                  >
+                    <Sliders size={16} style={{ color: '#f59e0b' }} />
+                    <span>Back to Edit Subtitle Style & Re-render</span>
+                  </button>
+
                   <label
                     style={{
                       display: 'flex',
@@ -241,6 +377,46 @@ export default function ExportModal({
               </div>
             ) : (
               <>
+                {/* Banner showing previous render ready */}
+                {downloadResult && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      fontSize: '12px',
+                      color: '#10b981'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                      <Check size={15} style={{ flexShrink: 0 }} />
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        Finished video ready: <strong>{downloadResult.export_filename}</strong>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('result')}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#38bdf8',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        padding: '0 4px',
+                        flexShrink: 0
+                      }}
+                    >
+                      View & Save
+                    </button>
+                  </div>
+                )}
                 {/* 1. Target Scope Switcher (Single vs Batch Multi-Video) */}
                 {queue && queue.length > 1 && (
                   <div>
@@ -317,46 +493,331 @@ export default function ExportModal({
                   </div>
                 )}
 
-                <div>
-                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
-                    Subtitle Visual Style:
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                    {[
-                      { id: 'modern_yellow', label: 'Cinematic Yellow' },
-                      { id: 'classic_white', label: 'Classic White' },
-                      { id: 'box_dark', label: 'Dark Boxed' }
-                    ].map((st) => (
-                      <button
-                        key={st.id}
-                        onClick={() => setStylePreset(st.id)}
+                {/* Subtitle Styling & Live Preview Card */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '10px',
+                    padding: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Type size={15} style={{ color: '#f59e0b' }} />
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-bright)' }}>
+                        Subtitle Styling & Live Preview
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      {subtitleMode === 'none' ? 'Subtitles Off' : `${fontSize}px • ${position.toUpperCase()}`}
+                    </span>
+                  </div>
+
+                  {/* Simulated Video Live Preview Screen */}
+                  <div
+                    style={{
+                      position: 'relative',
+                      width: '100%',
+                      height: '125px',
+                      backgroundColor: '#0a0d14',
+                      backgroundImage: 'radial-gradient(circle at 50% 40%, #1e293b 0%, #090d16 85%)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      userSelect: 'none'
+                    }}
+                  >
+                    {/* Top-left label */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '6px',
+                        left: '8px',
+                        fontSize: '9px',
+                        color: 'rgba(255,255,255,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        zIndex: 2
+                      }}
+                    >
+                      <Eye size={10} />
+                      <span>LIVE PREVIEW</span>
+                    </div>
+
+                    {/* Optional Watermark Preview */}
+                    {addLogoWatermark && (
+                      <div
                         style={{
-                          padding: '10px',
-                          borderRadius: '8px',
-                          border: `1px solid ${stylePreset === st.id ? 'var(--accent-color)' : 'var(--border-color)'}`,
-                          backgroundColor: stylePreset === st.id ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-tertiary)',
-                          color: stylePreset === st.id ? '#fff' : 'var(--text-muted)',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: 'pointer'
+                          position: 'absolute',
+                          top: '6px',
+                          right: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          backgroundColor: 'rgba(0,0,0,0.5)',
+                          padding: '2px 5px',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          zIndex: 2
                         }}
                       >
-                        {st.label}
-                      </button>
-                    ))}
+                        <img src="/logo.png" alt="MK" style={{ width: '11px', height: '11px', borderRadius: '50%' }} />
+                        <span style={{ fontSize: '8px', color: '#ef4444', fontWeight: 700 }}>MK MOVIE</span>
+                      </div>
+                    )}
+
+                    {subtitleMode === 'none' ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '3px',
+                          padding: '6px 12px',
+                          backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          borderRadius: '6px',
+                          color: '#fca5a5',
+                          fontSize: '11px',
+                          textAlign: 'center',
+                          zIndex: 1
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>🚫 Clean Video (No Subtitles Burned)</span>
+                        <span style={{ fontSize: '9px', color: '#f87171' }}>
+                          Khmer AI voiceover + BGM embedded with zero burnt text.
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        className="font-khmer"
+                        style={{
+                          position: 'absolute',
+                          left: '50%',
+                          transform: position === 'middle' ? 'translate(-50%, -50%)' : 'translateX(-50%)',
+                          ...(position === 'top'
+                            ? { top: `${Math.max(6, Math.min(45, Math.round(verticalOffset * 0.32)))}px` }
+                            : position === 'middle'
+                            ? { top: '50%' }
+                            : { bottom: `${Math.max(6, Math.min(45, Math.round(verticalOffset * 0.32)))}px` }
+                          ),
+                          backgroundColor: stylePreset === 'box_dark'
+                            ? 'rgba(0, 0, 0, 0.92)'
+                            : 'rgba(0, 0, 0, 0.72)',
+                          color: stylePreset === 'modern_yellow'
+                            ? '#facc15'
+                            : '#ffffff',
+                          fontSize: `${Math.max(11, Math.round(fontSize * 0.62))}px`,
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          textAlign: 'center',
+                          maxWidth: '88%',
+                          lineHeight: 1.3,
+                          boxShadow: stylePreset === 'box_dark' ? '0 2px 8px rgba(0,0,0,0.8)' : 'none',
+                          textShadow: stylePreset === 'classic_white'
+                            ? '1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000'
+                            : '1px 1px 2px rgba(0,0,0,0.8)',
+                          pointerEvents: 'none',
+                          transition: 'all 0.12s ease-out',
+                          zIndex: 1
+                        }}
+                      >
+                        {sampleSubtitleText}
+                      </div>
+                    )}
                   </div>
+
+                  {/* 1. Subtitle Mode Switcher */}
+                  <div>
+                    <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>
+                      Subtitle Mode:
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                      {[
+                        { id: 'khmer', label: '🇰🇭 Khmer Subtitles' },
+                        { id: 'original', label: '🇨🇳 Original Text' },
+                        { id: 'none', label: '🚫 Clean (No Subs)' }
+                      ].map((mode) => (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() => updateSettings({ subtitleMode: mode.id })}
+                          style={{
+                            padding: '7px 4px',
+                            borderRadius: '6px',
+                            border: `1px solid ${subtitleMode === mode.id ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                            backgroundColor: subtitleMode === mode.id ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-base)',
+                            color: subtitleMode === mode.id ? '#ffffff' : 'var(--text-muted)',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Font Size & Position Controls (Visible when not 'none') */}
+                  {subtitleMode !== 'none' && (
+                    <>
+                      {/* Font Size Slider & Quick Pills */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                          <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            Text Size:
+                          </label>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#f59e0b' }}>
+                            {fontSize}px
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="16"
+                          max="60"
+                          step="1"
+                          value={fontSize}
+                          onChange={(e) => updateSettings({ fontSize: parseInt(e.target.value) })}
+                          style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer', marginBottom: '6px' }}
+                        />
+                        {/* Quick Size Preset Pills */}
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {[
+                            { label: 'Small', size: 18 },
+                            { label: 'Standard', size: 24 },
+                            { label: 'Medium', size: 32 },
+                            { label: 'Large', size: 42 },
+                            { label: 'Extra', size: 54 }
+                          ].map((preset) => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => updateSettings({ fontSize: preset.size })}
+                              style={{
+                                flex: 1,
+                                padding: '4px 4px',
+                                borderRadius: '4px',
+                                border: `1px solid ${fontSize === preset.size ? '#f59e0b' : 'var(--border-color)'}`,
+                                backgroundColor: fontSize === preset.size ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-base)',
+                                color: fontSize === preset.size ? '#f59e0b' : 'var(--text-muted)',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {preset.label} ({preset.size}px)
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Position Selector & Vertical Offset */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        {/* Position */}
+                        <div>
+                          <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                            Position:
+                          </label>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+                            {[
+                              { id: 'bottom', label: 'Bottom' },
+                              { id: 'middle', label: 'Middle' },
+                              { id: 'top', label: 'Top' }
+                            ].map((pos) => (
+                              <button
+                                key={pos.id}
+                                type="button"
+                                onClick={() => updateSettings({ position: pos.id })}
+                                style={{
+                                  padding: '5px 2px',
+                                  borderRadius: '4px',
+                                  border: `1px solid ${position === pos.id ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                                  backgroundColor: position === pos.id ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-base)',
+                                  color: position === pos.id ? '#ffffff' : 'var(--text-muted)',
+                                  fontSize: '10px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {pos.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Vertical Offset */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                              Margin:
+                            </label>
+                            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-bright)' }}>
+                              {verticalOffset}px
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="15"
+                            max="120"
+                            step="5"
+                            value={verticalOffset}
+                            onChange={(e) => updateSettings({ verticalOffset: parseInt(e.target.value) })}
+                            style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Subtitle Visual Style */}
+                      <div>
+                        <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                          Visual Preset:
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                          {[
+                            { id: 'modern_yellow', label: 'Cinematic Yellow' },
+                            { id: 'classic_white', label: 'Classic White' },
+                            { id: 'box_dark', label: 'Dark Boxed' }
+                          ].map((st) => (
+                            <button
+                              key={st.id}
+                              type="button"
+                              onClick={() => {
+                                setStylePreset(st.id);
+                                updateSettings({ stylePreset: st.id });
+                              }}
+                              style={{
+                                padding: '6px 4px',
+                                borderRadius: '6px',
+                                border: `1px solid ${stylePreset === st.id ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                                backgroundColor: stylePreset === st.id ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-base)',
+                                color: stylePreset === st.id ? '#fff' : 'var(--text-muted)',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {st.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={useTranslation}
-                      onChange={(e) => setUseTranslation(e.target.checked)}
-                      style={{ accentColor: 'var(--accent-primary)' }}
-                    />
-                    Burn translated subtitles (Khmer)
-                  </label>
 
                   <label
                     style={{
@@ -488,7 +949,12 @@ export default function ExportModal({
                     onClick={() => {
                       const options = {
                         subtitle_style: stylePreset,
-                        use_translation: useTranslation,
+                        font_size: fontSize,
+                        subtitle_position: position,
+                        vertical_offset: verticalOffset,
+                        subtitle_mode: subtitleMode,
+                        burn_subtitles: subtitleMode !== 'none',
+                        use_translation: subtitleMode === 'khmer',
                         include_dubbing: includeDubbing,
                         mute_original_audio: includeDubbing ? muteOriginalAudio : false,
                         add_logo_watermark: addLogoWatermark,
@@ -516,7 +982,7 @@ export default function ExportModal({
                     <Flame size={14} />
                     {renderScope === 'batch'
                       ? (isBatchRendering ? 'Batch Rendering...' : `Start Batch Render (${targetBatchCount} Videos)`)
-                      : (isProcessing ? 'Rendering in background...' : 'Start Rendering (1 Video)')}
+                      : (isProcessing ? 'Rendering in background...' : downloadResult ? 'Re-render Video (Burn New Style)' : 'Start Rendering (1 Video)')}
                   </button>
                 </div>
               </>

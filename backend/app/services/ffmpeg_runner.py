@@ -116,16 +116,24 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
     temp_ass_path = AUDIO_CACHE_DIR / f"temp_{temp_id}.ass"
 
     # 1. Generate temp ASS file if subtitles present
-    has_subtitles = bool(req.items)
+    sub_mode = getattr(req, "subtitle_mode", "khmer")
+    burn_subs = getattr(req, "burn_subtitles", True) and sub_mode != "none"
+    has_subtitles = bool(req.items) and burn_subs
     if has_subtitles:
+        pos = getattr(req, "subtitle_position", "bottom")
+        align = 8 if pos == "top" else (5 if pos == "middle" else 2)
+        v_offset = getattr(req, "vertical_offset", 55)
+        use_translated_flag = (sub_mode == "khmer")
         ass_content = export_ass(
             items=req.items,
-            use_translated=req.use_translation,
+            use_translated=use_translated_flag,
             style_preset=req.subtitle_style,
             font_name=req.font_name,
             font_size=req.font_size,
             primary_color=req.primary_color,
             outline_color=req.outline_color,
+            alignment=align,
+            margin_v=v_offset,
             play_res_x=probe.get("width", 1920),
             play_res_y=probe.get("height", 1080)
         )

@@ -308,20 +308,24 @@ async def separate_vocals_endpoint(req: VocalSeparationRequest):
 
 @app.post("/api/translate")
 async def translate_subtitles(req: TranslationRequest):
-    if req.provider == "gemini":
-        translated = await translate_batch_gemini(
-            req.items,
-            source_lang=req.source_lang,
-            target_lang=req.target_lang,
-            api_key=req.gemini_api_key
-        )
-    else:
-        translated = await translate_batch_google_free(
-            req.items,
-            source_lang=req.source_lang,
-            target_lang=req.target_lang
-        )
-    return {"items": translated}
+    try:
+        if req.provider == "gemini":
+            translated = await translate_batch_gemini(
+                req.items,
+                source_lang=req.source_lang,
+                target_lang=req.target_lang,
+                api_key=req.gemini_api_key
+            )
+        else:
+            translated = await translate_batch_google_free(
+                req.items,
+                source_lang=req.source_lang,
+                target_lang=req.target_lang
+            )
+        return {"items": translated}
+    except Exception as e:
+        print(f"Translation API error: {e}")
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
 # ==================== Text-to-Speech (Edge-TTS) ====================
 

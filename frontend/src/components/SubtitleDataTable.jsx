@@ -14,7 +14,9 @@ export default function SubtitleDataTable({
   playingAudioId,
   onTranslateClick,
   onOpenTranslateModal,
-  isTranslating
+  isTranslating,
+  onGenerateAudioClick,
+  isGeneratingAudio = false
 }) {
   const lastSelectedIndexRef = useRef(null);
 
@@ -90,15 +92,35 @@ export default function SubtitleDataTable({
         >
           <FileText size={16} /> Subtitle Data
           {subtitles.length > 0 && (
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400 }}>
-              ({subtitles.length} lines{selectedIds.length > 0 && selectedIds.length < subtitles.length ? ` • ${selectedIds.length} selected` : ''})
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400 }}>
+                ({subtitles.length} lines{selectedIds.length > 0 && selectedIds.length < subtitles.length ? ` • ${selectedIds.length} selected` : ''})
+              </span>
+              {selectedIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onSelectIds([])}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#38bdf8',
+                    fontSize: '10px',
+                    cursor: 'pointer',
+                    padding: '0 2px',
+                    textDecoration: 'underline'
+                  }}
+                  title="Deselect all rows"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Right Side Actions: Google Translate & Voice Selection */}
+        {/* Right Side Actions: Google Translate, Generate Audio & Voice Selection */}
         {subtitles.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {/* Google Translate Button Group */}
             <div
               style={{
@@ -110,10 +132,11 @@ export default function SubtitleDataTable({
               }}
             >
               <button
-                onClick={() => onTranslateClick && onTranslateClick()}
+                type="button"
+                onClick={() => onTranslateClick && onTranslateClick(selectedIds.length > 0 && selectedIds.length < subtitles.length ? 'selected' : 'all')}
                 disabled={isTranslating}
                 style={{
-                  padding: '5px 12px',
+                  padding: '6px 11px',
                   fontSize: '11px',
                   fontWeight: 600,
                   display: 'inline-flex',
@@ -128,8 +151,8 @@ export default function SubtitleDataTable({
                 }}
                 title={
                   selectedIds.length > 0 && selectedIds.length < subtitles.length
-                    ? `Translate ${selectedIds.length} selected lines to Khmer`
-                    : 'Translate all subtitles to Khmer with Google Translate'
+                    ? `Translate ${selectedIds.length} selected lines to Khmer with Google Translate`
+                    : `Translate all ${subtitles.length} lines to Khmer with Google Translate`
                 }
               >
                 {isTranslating ? (
@@ -141,16 +164,39 @@ export default function SubtitleDataTable({
                   ? 'Translating...'
                   : selectedIds.length > 0 && selectedIds.length < subtitles.length
                   ? `Translate Selected (${selectedIds.length})`
-                  : 'Google Translate to Khmer'}
+                  : `Google Translate to Khmer (${subtitles.length})`}
               </button>
+
+              {/* If subset selected, provide a quick 'All' translation shortcut */}
+              {selectedIds.length > 0 && selectedIds.length < subtitles.length && (
+                <button
+                  type="button"
+                  onClick={() => onTranslateClick && onTranslateClick('all')}
+                  disabled={isTranslating}
+                  style={{
+                    padding: '6px 8px',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    backgroundColor: '#1d4ed8',
+                    color: '#bfdbfe',
+                    border: 'none',
+                    borderLeft: '1px solid rgba(255, 255, 255, 0.25)',
+                    cursor: isTranslating ? 'not-allowed' : 'pointer'
+                  }}
+                  title={`Translate all ${subtitles.length} lines to Khmer`}
+                >
+                  All ({subtitles.length})
+                </button>
+              )}
 
               {/* Advanced Translation Options (AIModal) */}
               {onOpenTranslateModal && (
                 <button
+                  type="button"
                   onClick={onOpenTranslateModal}
                   disabled={isTranslating}
                   style={{
-                    padding: '5px 8px',
+                    padding: '6px 8px',
                     fontSize: '11px',
                     backgroundColor: isTranslating ? '#1e40af' : '#1d4ed8',
                     color: '#bfdbfe',
@@ -168,6 +214,75 @@ export default function SubtitleDataTable({
               )}
             </div>
 
+            {/* Generate Selected Audio Button Group */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                borderRadius: '6px',
+                overflow: 'hidden',
+                boxShadow: '0 2px 6px rgba(239, 68, 68, 0.3)'
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => onGenerateAudioClick && onGenerateAudioClick(selectedIds.length > 0 && selectedIds.length < subtitles.length ? 'selected' : 'all')}
+                disabled={isGeneratingAudio || subtitles.length === 0}
+                style={{
+                  padding: '6px 11px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: isGeneratingAudio ? '#b91c1c' : '#ef4444',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: isGeneratingAudio || subtitles.length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: isGeneratingAudio || subtitles.length === 0 ? 0.65 : 1,
+                  transition: 'all 0.15s ease'
+                }}
+                title={
+                  selectedIds.length > 0 && selectedIds.length < subtitles.length
+                    ? `Generate Khmer AI Neural Voice for ${selectedIds.length} selected lines`
+                    : `Generate Khmer AI Neural Voice for all ${subtitles.length} lines`
+                }
+              >
+                {isGeneratingAudio ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Volume2 size={13} />
+                )}
+                {isGeneratingAudio
+                  ? 'Generating Audio...'
+                  : selectedIds.length > 0 && selectedIds.length < subtitles.length
+                  ? `Generate Voice (${selectedIds.length})`
+                  : `Generate Voice (All ${subtitles.length})`}
+              </button>
+
+              {/* If subset selected, provide a quick 'All' audio generation shortcut */}
+              {selectedIds.length > 0 && selectedIds.length < subtitles.length && (
+                <button
+                  type="button"
+                  onClick={() => onGenerateAudioClick && onGenerateAudioClick('all')}
+                  disabled={isGeneratingAudio}
+                  style={{
+                    padding: '6px 8px',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    backgroundColor: '#b91c1c',
+                    color: '#fecaca',
+                    border: 'none',
+                    borderLeft: '1px solid rgba(255, 255, 255, 0.25)',
+                    cursor: isGeneratingAudio ? 'not-allowed' : 'pointer'
+                  }}
+                  title={`Generate Khmer AI Voice for all ${subtitles.length} lines`}
+                >
+                  All ({subtitles.length})
+                </button>
+              )}
+            </div>
+
             {/* Set All Voices */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', marginLeft: '4px' }}>
               <span
@@ -181,6 +296,7 @@ export default function SubtitleDataTable({
                 <Users size={13} /> Set voices:
               </span>
               <button
+                type="button"
                 onClick={() => onSetAllVoices('Male')}
                 className="btn-secondary"
                 style={{ padding: '2px 8px', fontSize: '10px', color: '#818cf8', borderColor: '#334155' }}

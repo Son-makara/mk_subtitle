@@ -1,12 +1,13 @@
+import uuid
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Union
 
 class SubtitleItem(BaseModel):
-    id: str
-    index: int
-    start_time: float = Field(..., description="Start time in seconds")
-    end_time: float = Field(..., description="End time in seconds")
-    text: str = Field(..., description="Original subtitle text")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    index: int = 1
+    start_time: float = Field(0.0, description="Start time in seconds")
+    end_time: float = Field(0.0, description="End time in seconds")
+    text: str = Field("", description="Original subtitle text")
     translated_text: Optional[str] = Field(None, description="Khmer / translated subtitle text")
     gender: str = Field("Male", description="Voice profile: Male or Female")
     audio_status: str = Field("idle", description="idle, generating, ready, error")
@@ -18,6 +19,9 @@ class SubtitleItem(BaseModel):
     audio_end: Optional[float] = Field(None, description="Audio end time on timeline")
     base_audio_duration: Optional[float] = Field(None, description="Base audio duration before speed adjust")
     is_duration_exceeded: Optional[bool] = Field(False, description="Whether audio exceeds subtitle interval")
+
+    class Config:
+        extra = "ignore"
 
 class SubtitleProject(BaseModel):
     id: Optional[str] = None
@@ -61,12 +65,19 @@ class TranslationRequest(BaseModel):
     items: List[SubtitleItem]
     source_lang: str = "auto"
     target_lang: str = "km"
-    provider: str = "gemini" # gemini or google_free
+    provider: str = "google_free" # gemini or google_free
     gemini_api_key: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
 
 class VideoBurnRequest(BaseModel):
     video_filename: str
     items: List[SubtitleItem]
+    burn_subtitles: bool = True
+    subtitle_mode: str = "khmer" # "khmer", "original", "none"
+    subtitle_position: str = "bottom" # "bottom", "middle", "top"
+    vertical_offset: int = 55
     use_translation: bool = True
     include_dubbing: bool = True
     mute_original_audio: bool = False # Mute original video audio only when dubbing with Khmer voice
@@ -82,6 +93,9 @@ class VideoBurnRequest(BaseModel):
     add_logo_watermark: bool = False
     job_id: Optional[str] = None
     custom_output_filename: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
 
 class STTRequest(BaseModel):
     video_filename: Optional[str] = None

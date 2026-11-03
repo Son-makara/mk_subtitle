@@ -27,15 +27,11 @@ export default function TimelineEditor({
   totalDuration,
   isPlaying = false,
   onTranscribeClick,
-  onTranslateClick,
-  isTranslating = false,
-  onGenerateAudioClick,
   onUpdateSubtitle,
   onClearTrack,
   onPlayAudioItem,
   playingAudioId,
   isTranscribing,
-  isGeneratingAudio,
   onRemoveVocalsClick,
   isRemovingVocals,
   hasCleanBgm,
@@ -510,82 +506,6 @@ export default function TimelineEditor({
               <Sparkles size={14} />
             )}
             {isTranscribing ? 'Transcribing...' : 'Transcribe'}
-          </button>
-
-          {/* Google Translate to Khmer Button */}
-          <button
-            onClick={onTranslateClick}
-            disabled={isTranslating || subtitles.length === 0}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: isTranslating || subtitles.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: isTranslating || subtitles.length === 0 ? 0.6 : 1,
-              border: 'none',
-              backgroundColor: isTranslating ? '#1d4ed8' : '#2563eb',
-              color: '#fff',
-              boxShadow: '0 2px 6px rgba(37, 99, 235, 0.35)',
-              transition: 'all 0.15s ease'
-            }}
-            title={
-              selectedCount > 0 && selectedCount < subtitles.length
-                ? `Translate ${selectedCount} selected lines to Khmer with Google Translate`
-                : 'Translate all subtitles to Khmer with Google Translate'
-            }
-          >
-            {isTranslating ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Languages size={14} />
-            )}
-            {isTranslating
-              ? 'Translating...'
-              : selectedCount > 0 && selectedCount < subtitles.length
-              ? `Translate (${selectedCount})`
-              : 'Translate (Khmer)'}
-          </button>
-
-          {/* Generate Selected Audio Button */}
-          <button
-            onClick={onGenerateAudioClick}
-            disabled={isGeneratingAudio || subtitles.length === 0}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: isGeneratingAudio || subtitles.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: isGeneratingAudio || subtitles.length === 0 ? 0.6 : 1,
-              border: 'none',
-              backgroundColor: isGeneratingAudio ? '#dc2626' : 'var(--accent-primary)',
-              color: '#fff',
-              boxShadow: '0 2px 6px rgba(79, 70, 229, 0.3)',
-              transition: 'all 0.15s ease'
-            }}
-            title={
-              selectedCount > 0 && selectedCount < subtitles.length
-                ? `Generate Khmer AI audio for ${selectedCount} selected lines`
-                : `Generate Khmer AI audio for all ${subtitles.length} lines`
-            }
-          >
-            {isGeneratingAudio ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <AudioWaveform size={14} />
-            )}
-            {isGeneratingAudio
-              ? 'Generating...'
-              : selectedCount > 0 && selectedCount < subtitles.length
-              ? `Generate Audio (${selectedCount})`
-              : 'Generate Selected Audio'}
           </button>
         </div>
       </div>
