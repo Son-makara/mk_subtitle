@@ -106,3 +106,11 @@ class STTRequest(BaseModel):
 
 class VocalSeparationRequest(BaseModel):
     video_filename: Optional[str] = None
+
+class VideoConcatRequest(BaseModel):
+    video_filenames: List[str]
+    custom_output_filename: Optional[str] = None
+    job_id: Optional[str] = None
+
+    class Config:
+        extra = "ignore"

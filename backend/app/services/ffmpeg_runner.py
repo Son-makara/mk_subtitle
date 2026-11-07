@@ -404,3 +404,143 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
                 pass
 
     return export_filename
+
+def concat_videos(
+    video_filenames: List[str],
+    custom_output_filename: Optional[str] = None,
+    job_id: Optional[str] = None
+) -> str:
+    """
+    Concatenates multiple video files into a single master video file.
+    Uses fast stream copy (-c copy with concat demuxer) when codecs match,
+    with an automatic fallback to filter_complex re-encoding.
+    """
+    if not video_filenames:
+        raise ValueError("No video filenames provided for concatenation.")
+
+    if job_id:
+        RENDER_PROGRESS[job_id] = {
+            "progress": 5,
+            "status": "rendering",
+            "message": f"Preparing to combine {len(video_filenames)} videos..."
+        }
+
+    resolved_paths: List[Path] = []
+    for fn in video_filenames:
+        clean = Path(str(fn).replace("/api/exports/", "").replace("/api/video/", "").split("?")[0]).name
+        found = None
+        for d in [EXPORTS_DIR, UPLOADS_DIR]:
+            p = d / clean
+            if p.exists() and p.is_file():
+                found = p
+                break
+        if not found:
+            # Try stem matching
+            stem = Path(clean).stem.lower()
+            for d in [EXPORTS_DIR, UPLOADS_DIR]:
+                for f in d.glob("*"):
+                    if f.is_file() and not f.name.startswith(".gitkeep") and f.stem.lower() == stem:
+                        found = f
+                        break
+                if found:
+                    break
+        if not found:
+            raise FileNotFoundError(f"Video file '{fn}' not found in exports or uploads.")
+        resolved_paths.append(found)
+
+    # Determine output filename
+    if custom_output_filename:
+        out_name = Path(custom_output_filename).name
+        if not out_name.lower().endswith(".mp4"):
+            out_name = f"{out_name}.mp4"
+    else:
+        first_stem = resolved_paths[0].stem.replace("_dubbed", "").replace("mk_sub_", "")
+        out_name = f"{first_stem}_combined_full_movie.mp4"
+
+    export_path = EXPORTS_DIR / out_name
+    try:
+        if export_path.exists():
+            export_path.unlink(missing_ok=True)
+    except Exception:
+        out_name = f"{Path(out_name).stem}_{uuid.uuid4().hex[:6]}.mp4"
+        export_path = EXPORTS_DIR / out_name
+
+    temp_list_path = AUDIO_CACHE_DIR / f"concat_{uuid.uuid4().hex[:8]}.txt"
+    try:
+        # Write concat list with safe paths
+        with open(temp_list_path, "w", encoding="utf-8") as f:
+            for vp in resolved_paths:
+                safe_path = str(vp.resolve()).replace("\\", "/").replace("'", "'\\''")
+                f.write(f"file '{safe_path}'\n")
+
+        if job_id:
+            RENDER_PROGRESS[job_id]["progress"] = 30
+            RENDER_PROGRESS[job_id]["message"] = "Stitching video segments together..."
+
+        # 1. Attempt fast lossless stream copy
+        copy_cmd = [
+            FFMPEG_PATH, "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(temp_list_path),
+            "-c", "copy",
+            str(export_path)
+        ]
+        proc = subprocess.run(
+            copy_cmd,
+            capture_output=True,
+            text=True,
+            creationflags=SUBPROCESS_FLAGS
+        )
+
+        stream_copy_success = proc.returncode == 0 and export_path.exists() and export_path.stat().st_size > 1000
+
+        # 2. Fallback to re-encode concat filter if stream copy is not feasible
+        if not stream_copy_success:
+            if job_id:
+                RENDER_PROGRESS[job_id]["progress"] = 50
+                RENDER_PROGRESS[job_id]["message"] = "Stream copy mismatch; re-encoding to seamless master MP4..."
+
+            inputs = []
+            filter_segments = []
+            for i, vp in enumerate(resolved_paths):
+                inputs.extend(["-i", str(vp)])
+                filter_segments.append(f"[{i}:v][{i}:a]")
+
+            filter_str = f"{''.join(filter_segments)}concat=n={len(resolved_paths)}:v=1:a=1[v][a]"
+            reencode_cmd = [
+                FFMPEG_PATH, "-y",
+                *inputs,
+                "-filter_complex", filter_str,
+                "-map", "[v]",
+                "-map", "[a]",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "22",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                str(export_path)
+            ]
+            rc2 = subprocess.run(
+                reencode_cmd,
+                capture_output=True,
+                text=True,
+                creationflags=SUBPROCESS_FLAGS
+            )
+            if rc2.returncode != 0 or not export_path.exists() or export_path.stat().st_size < 1000:
+                raise RuntimeError(f"Video concatenation failed: {rc2.stderr[-400:]}")
+
+        if job_id:
+            RENDER_PROGRESS[job_id]["progress"] = 100
+            RENDER_PROGRESS[job_id]["status"] = "completed"
+            RENDER_PROGRESS[job_id]["export_filename"] = out_name
+
+        return out_name
+
+    finally:
+        if temp_list_path.exists():
+            try:
+                os.remove(temp_list_path)
+            except Exception:
+                pass

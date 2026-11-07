@@ -22,7 +22,8 @@ from .models.subtitle import (
     TranslationRequest,
     VideoBurnRequest,
     STTRequest,
-    VocalSeparationRequest
+    VocalSeparationRequest,
+    VideoConcatRequest
 )
 from .services.subtitle_parser import (
     parse_subtitles_auto,
@@ -42,7 +43,7 @@ from .services.translator import (
 )
 from .services.whisper_stt import transcribe_video_whisper
 from .services.vocal_separator import separate_audio_vocals
-from .services.ffmpeg_runner import probe_video, render_and_burn_video, get_render_progress
+from .services.ffmpeg_runner import probe_video, render_and_burn_video, get_render_progress, concat_videos
 
 app = FastAPI(
     title="mk_subtitle API",
@@ -412,6 +413,27 @@ async def burn_video_endpoint(req: VideoBurnRequest, background_tasks: Backgroun
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Burn render failed: {str(e)}")
+
+@app.post("/api/render/concat")
+async def concat_videos_endpoint(req: VideoConcatRequest):
+    try:
+        if not req.video_filenames:
+            raise HTTPException(status_code=400, detail="No video filenames provided for concatenation.")
+        export_filename = await asyncio.to_thread(
+            concat_videos,
+            req.video_filenames,
+            req.custom_output_filename,
+            req.job_id
+        )
+        return {
+            "status": "success",
+            "export_filename": export_filename,
+            "download_url": f"/api/exports/{urllib.parse.quote(export_filename)}"
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Video concatenation failed: {str(e)}")
 
 # Mount frontend build static directory if present
 if getattr(sys, 'frozen', False):

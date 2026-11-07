@@ -614,8 +614,15 @@ export default function App() {
   const handleBatchRenderVideos = async (targetIds = null, customOptions = null) => {
     if (isBatchRendering || isBatchProcessing || videoQueue.length === 0) return;
 
-    const idsToRun = Array.isArray(targetIds) && targetIds.length > 0
-      ? targetIds
+    let actualIds = targetIds;
+    let actualOptions = customOptions;
+    if (targetIds && typeof targetIds === 'object' && !Array.isArray(targetIds) && !targetIds.nativeEvent) {
+      actualOptions = targetIds;
+      actualIds = targetIds.targetIds || null;
+    }
+
+    const idsToRun = Array.isArray(actualIds) && actualIds.length > 0
+      ? actualIds
       : videoQueue.map((v) => v.id);
 
     const itemsToProcess = videoQueue.filter((v) => idsToRun.includes(v.id));
@@ -647,7 +654,7 @@ export default function App() {
     });
     setStatusMessage(`Starting Batch Render for ${itemsToProcess.length} videos...`);
 
-    const isCustomObject = customOptions && typeof customOptions === 'object' && !customOptions.nativeEvent;
+    const isCustomObject = actualOptions && typeof actualOptions === 'object' && !actualOptions.nativeEvent ? actualOptions : null;
     const renderOpts = {
       subtitle_style: isCustomObject?.subtitle_style || subSettings.stylePreset || 'modern_yellow',
       font_size: isCustomObject?.font_size || subSettings.fontSize || 24,
@@ -660,10 +667,14 @@ export default function App() {
       mute_original_audio: isCustomObject?.mute_original_audio !== undefined ? isCustomObject.mute_original_audio : true,
       add_logo_watermark: Boolean(isCustomObject?.add_logo_watermark),
       background_ducking_volume: isCustomObject?.background_ducking_volume !== undefined ? isCustomObject.background_ducking_volume : 0.25,
-      use_amf_gpu: isCustomObject?.use_amf_gpu !== undefined ? isCustomObject.use_amf_gpu : true
+      use_amf_gpu: isCustomObject?.use_amf_gpu !== undefined ? isCustomObject.use_amf_gpu : true,
+      combine_into_one: Boolean(isCustomObject?.combine_into_one),
+      combined_filename: isCustomObject?.combined_filename || null,
+      batch_output_mode: isCustomObject?.batch_output_mode || 'separate'
     };
 
     let successfullyRendered = 0;
+    const renderedOutputFilenames = [];
 
     for (let i = 0; i < itemsToProcess.length; i++) {
       if (batchCancelRef.current) {
@@ -802,6 +813,7 @@ export default function App() {
           .replace(/\.[^/.]+$/, '')
           .replace(/^mk_sub_/, '');
         const outputFilename = burnData.export_filename || `${rawStem}_dubbed.mp4`;
+        renderedOutputFilenames.push(outputFilename);
 
         if (dirHandle) {
           try {
@@ -855,13 +867,77 @@ export default function App() {
       }
     }
 
+    // Step F: Combine rendered videos into 1 video if requested
+    if (!batchCancelRef.current && renderOpts.combine_into_one && renderedOutputFilenames.length > 0) {
+      setStatusMessage(`⚡ Combining ${renderedOutputFilenames.length} episodes into 1 video...`);
+      setRenderToast({
+        type: 'info',
+        message: `⚡ Combining ${renderedOutputFilenames.length} episodes into 1 master movie...`
+      });
+
+      const concatJobId = `job_concat_${Date.now()}`;
+      try {
+        const defaultCombinedName = renderOpts.combined_filename || `${(itemsToProcess[0]?.name || 'series').replace(/\.[^/.]+$/, '')}_Full_Movie.mp4`;
+
+        const concatRes = await fetch('/api/render/concat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            video_filenames: renderedOutputFilenames,
+            custom_output_filename: defaultCombinedName,
+            job_id: concatJobId
+          })
+        });
+
+        if (!concatRes.ok) {
+          const errData = await concatRes.json().catch(() => ({}));
+          throw new Error(extractErrorMessage(errData, `Concat error (${concatRes.status})`));
+        }
+
+        const concatData = await concatRes.json();
+        const masterFilename = concatData.export_filename;
+
+        // If directory picker was selected, save master combined video directly
+        if (dirHandle) {
+          try {
+            const masterFileHandle = await dirHandle.getFileHandle(masterFilename, { create: true });
+            const blobRes = await fetch(concatData.download_url);
+            const blob = await blobRes.blob();
+            const writable = await masterFileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+          } catch (writeErr) {
+            console.warn(`Could not save ${masterFilename} directly to folder:`, writeErr);
+          }
+        }
+
+        setBurnResult(concatData);
+        setLastRenderedVideo(concatData);
+        setExportType('burn');
+        setExportModalOpen(true);
+        setStatusMessage(`🎉 Combined ${renderedOutputFilenames.length} episodes into 1 video: ${masterFilename}!`);
+        setRenderToast({
+          type: 'success',
+          message: `🎉 Combined into 1 Video: ${masterFilename}!`,
+          data: { isBatch: true, combined: true }
+        });
+      } catch (concatErr) {
+        console.error('Video combination failed:', concatErr);
+        setRenderToast({
+          type: 'error',
+          message: `Videos rendered, but combination failed: ${concatErr.message}`
+        });
+      }
+    } else {
+      setStatusMessage(`🎉 Batch Render finished: ${successfullyRendered} videos rendered successfully!`);
+      setRenderToast({
+        type: 'success',
+        message: `🎉 Batch Render Completed: ${successfullyRendered} video(s) rendered!`,
+        data: { isBatch: true }
+      });
+    }
+
     setIsBatchRendering(false);
-    setStatusMessage(`🎉 Batch Render finished: ${successfullyRendered} videos rendered successfully!`);
-    setRenderToast({
-      type: 'success',
-      message: `🎉 Batch Render Completed: ${successfullyRendered} video(s) rendered!`,
-      data: { isBatch: true }
-    });
     await fetchStorageUsage();
   };
 

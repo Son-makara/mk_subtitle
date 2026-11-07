@@ -22,6 +22,20 @@ export default function ExportModal({
   const [subFormat, setSubFormat] = useState('srt');
   const [useTranslation, setUseTranslation] = useState(true);
   const [renderScope, setRenderScope] = useState('single'); // 'single' or 'batch'
+  const [batchOutputMode, setBatchOutputMode] = useState('separate'); // 'separate' or 'combine'
+  const [combinedTitle, setCombinedTitle] = useState('');
+
+  // Default combined title based on first video or project name
+  React.useEffect(() => {
+    if (!combinedTitle && queue && queue.length > 0) {
+      const firstVid = queue[0];
+      const base = (firstVid.name || firstVid.serverFilename || 'Series')
+        .replace(/\.[^/.]+$/, '')
+        .replace(/^mk_sub_/, '')
+        .replace(/_dubbed$/, '');
+      setCombinedTitle(`${base}_Full_Movie.mp4`);
+    }
+  }, [queue, combinedTitle]);
 
   // Switch between 'settings' (edit styles) and 'result' (download/save finished video)
   const [viewMode, setViewMode] = useState('settings');
@@ -470,24 +484,111 @@ export default function ExportModal({
                     </div>
 
                     {renderScope === 'batch' && (
-                      <div
-                        style={{
-                          padding: '8px 12px',
-                          backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          borderRadius: '8px',
-                          fontSize: '11px',
-                          color: '#fca5a5',
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: '8px',
-                          marginBottom: '8px'
-                        }}
-                      >
-                        <span style={{ fontSize: '14px' }}>⚡</span>
-                        <div style={{ lineHeight: 1.4 }}>
-                          <strong>Batch Render Auto-Pilot:</strong> Will sequentially transcribe, generate Khmer AI voiceover, mute foreign dialogue, burn subtitles, and save all <strong>{targetBatchCount} selected videos</strong> directly into your chosen folder.
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
+                        {/* Output Mode Switcher: Separate vs Combine into 1 Video */}
+                        <div>
+                          <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                            Batch Output Format:
+                          </label>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setBatchOutputMode('separate')}
+                              style={{
+                                padding: '7px 8px',
+                                borderRadius: '6px',
+                                border: `1px solid ${batchOutputMode === 'separate' ? '#f59e0b' : 'var(--border-color)'}`,
+                                backgroundColor: batchOutputMode === 'separate' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-base)',
+                                color: batchOutputMode === 'separate' ? '#f59e0b' : 'var(--text-muted)',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <span>📁 Separate Episode Files ({targetBatchCount})</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setBatchOutputMode('combine')}
+                              style={{
+                                padding: '7px 8px',
+                                borderRadius: '6px',
+                                border: `1px solid ${batchOutputMode === 'combine' ? '#10b981' : 'var(--border-color)'}`,
+                                backgroundColor: batchOutputMode === 'combine' ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-base)',
+                                color: batchOutputMode === 'combine' ? '#10b981' : 'var(--text-muted)',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <span>🎞️ Combine into 1 Video (Full Movie)</span>
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Explanation card */}
+                        <div
+                          style={{
+                            padding: '8px 12px',
+                            backgroundColor: batchOutputMode === 'combine' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                            border: `1px solid ${batchOutputMode === 'combine' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                            borderRadius: '8px',
+                            fontSize: '11px',
+                            color: batchOutputMode === 'combine' ? '#6ee7b7' : '#fca5a5',
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '8px'
+                          }}
+                        >
+                          <span style={{ fontSize: '14px' }}>{batchOutputMode === 'combine' ? '🎞️' : '⚡'}</span>
+                          <div style={{ lineHeight: 1.4 }}>
+                            {batchOutputMode === 'combine' ? (
+                              <>
+                                <strong>1-Click Full Movie Merger:</strong> All <strong>{targetBatchCount} videos</strong> will be processed (transcribed, Khmer AI dubbed, subtitles burned) and then <strong>automatically stitched into 1 seamless full movie video</strong>!
+                              </>
+                            ) : (
+                              <>
+                                <strong>Batch Auto-Pilot:</strong> Will sequentially transcribe, generate Khmer AI voiceover, mute foreign dialogue, burn subtitles, and save all <strong>{targetBatchCount} selected videos</strong> directly into your chosen folder.
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* If combine mode is active, allow customizing the combined filename */}
+                        {batchOutputMode === 'combine' && (
+                          <div>
+                            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                              Combined Master Video Name:
+                            </label>
+                            <input
+                              type="text"
+                              value={combinedTitle}
+                              onChange={(e) => setCombinedTitle(e.target.value)}
+                              placeholder="e.g. Series_Full_Movie.mp4"
+                              style={{
+                                width: '100%',
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-base)',
+                                color: 'var(--text-bright)',
+                                fontSize: '12px',
+                                boxSizing: 'border-box'
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -959,7 +1060,10 @@ export default function ExportModal({
                         mute_original_audio: includeDubbing ? muteOriginalAudio : false,
                         add_logo_watermark: addLogoWatermark,
                         background_ducking_volume: duckingVol / 100,
-                        use_amf_gpu: useAmfGpu
+                        use_amf_gpu: useAmfGpu,
+                        combine_into_one: renderScope === 'batch' && batchOutputMode === 'combine',
+                        combined_filename: combinedTitle || 'Combined_Full_Movie.mp4',
+                        batch_output_mode: batchOutputMode
                       };
                       if (renderScope === 'batch' && onBatchRender) {
                         onBatchRender(options);
@@ -972,16 +1076,24 @@ export default function ExportModal({
                     disabled={isProcessing || isBatchRendering}
                     style={{
                       background: renderScope === 'batch'
-                        ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                        ? (batchOutputMode === 'combine'
+                            ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+                            : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)')
                         : 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
                       boxShadow: renderScope === 'batch'
-                        ? '0 4px 14px rgba(239, 68, 68, 0.4)'
+                        ? (batchOutputMode === 'combine'
+                            ? '0 4px 14px rgba(16, 185, 129, 0.4)'
+                            : '0 4px 14px rgba(239, 68, 68, 0.4)')
                         : '0 4px 14px rgba(245, 158, 11, 0.4)'
                     }}
                   >
                     <Flame size={14} />
                     {renderScope === 'batch'
-                      ? (isBatchRendering ? 'Batch Rendering...' : `Start Batch Render (${targetBatchCount} Videos)`)
+                      ? (isBatchRendering
+                          ? 'Batch Rendering...'
+                          : batchOutputMode === 'combine'
+                            ? `Render & Combine into 1 Video (${targetBatchCount} Videos)`
+                            : `Start Batch Render (${targetBatchCount} Videos)`)
                       : (isProcessing ? 'Rendering in background...' : downloadResult ? 'Re-render Video (Burn New Style)' : 'Start Rendering (1 Video)')}
                   </button>
                 </div>
