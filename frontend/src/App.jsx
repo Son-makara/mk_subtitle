@@ -135,6 +135,7 @@ export default function App() {
   const [subSettings, setSubSettings] = useState(() => {
     const DEFAULT_SUB_SETTINGS = {
       subtitleMode: 'khmer',
+      fontName: 'Kantumruy Pro',
       fontSize: 24,
       position: 'bottom',
       verticalOffset: 55,
@@ -275,20 +276,36 @@ export default function App() {
     setIsProcessing(true);
     setStatusMessage(`Queuing ${files.length} video(s)...`);
 
-    const newItems = files.map((file, idx) => ({
-      id: `vid_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
-      name: file.name,
-      file: file,
-      url: null,
-      serverFilename: '',
-      duration: 0,
-      status: 'uploading',
-      progress: 15,
-      subtitles: [],
-      bgmUrl: null,
-      bgmFilename: null,
-      exportResult: null
-    }));
+    const newItems = files.map((file, idx) => {
+      let folderName = '';
+      if (file.webkitRelativePath) {
+        const parts = file.webkitRelativePath.split('/');
+        if (parts.length > 1) {
+          folderName = parts[0];
+        }
+      } else if (file.path) {
+        const norm = file.path.replace(/\\/g, '/');
+        const parts = norm.split('/');
+        if (parts.length > 1) {
+          folderName = parts[parts.length - 2];
+        }
+      }
+      return {
+        id: `vid_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
+        name: file.name,
+        folderName: folderName,
+        file: file,
+        url: null,
+        serverFilename: '',
+        duration: 0,
+        status: 'uploading',
+        progress: 15,
+        subtitles: [],
+        bgmUrl: null,
+        bgmFilename: null,
+        exportResult: null
+      };
+    });
 
     setVideoQueue((prev) => [...prev, ...newItems]);
 
@@ -319,6 +336,7 @@ export default function App() {
                 url: data.url,
                 serverFilename: data.filename,
                 name: data.name || data.filename,
+                folderName: v.folderName || item.folderName || '',
                 duration: duration,
                 status: 'idle',
                 progress: 0
@@ -657,6 +675,7 @@ export default function App() {
     const isCustomObject = actualOptions && typeof actualOptions === 'object' && !actualOptions.nativeEvent ? actualOptions : null;
     const renderOpts = {
       subtitle_style: isCustomObject?.subtitle_style || subSettings.stylePreset || 'modern_yellow',
+      font_name: isCustomObject?.font_name || subSettings.fontName || 'Kantumruy Pro',
       font_size: isCustomObject?.font_size || subSettings.fontSize || 24,
       subtitle_position: isCustomObject?.subtitle_position || subSettings.position || 'bottom',
       vertical_offset: isCustomObject?.vertical_offset !== undefined ? isCustomObject.vertical_offset : (subSettings.verticalOffset || 55),
@@ -877,7 +896,20 @@ export default function App() {
 
       const concatJobId = `job_concat_${Date.now()}`;
       try {
-        const defaultCombinedName = renderOpts.combined_filename || `${(itemsToProcess[0]?.name || 'series').replace(/\.[^/.]+$/, '')}_Full_Movie.mp4`;
+        let defaultCombinedName = renderOpts.combined_filename;
+        if (!defaultCombinedName || defaultCombinedName === 'Combined_Full_Movie.mp4') {
+          const firstFolder = itemsToProcess[0]?.folderName;
+          const firstStem = (itemsToProcess[0]?.name || 'series')
+            .replace(/\.[^/.]+$/, '')
+            .replace(/^mk_sub_/, '')
+            .replace(/_dubbed$/, '')
+            .replace(/S\d+E\d+/i, '')
+            .replace(/第?\d+集/g, '')
+            .replace(/[-_ ]+$/, '')
+            .trim();
+          const baseName = firstFolder || firstStem || 'Series';
+          defaultCombinedName = `${baseName}_Full_Movie.mp4`;
+        }
 
         const concatRes = await fetch('/api/render/concat', {
           method: 'POST',
@@ -1643,6 +1675,7 @@ export default function App() {
 
       const smartOptions = {
         subtitle_style: subSettings.stylePreset || 'modern_yellow',
+        font_name: subSettings.fontName || 'Kantumruy Pro',
         font_size: subSettings.fontSize || 24,
         subtitle_position: subSettings.position || 'bottom',
         vertical_offset: subSettings.verticalOffset || 55,
@@ -2126,6 +2159,9 @@ export default function App() {
                       style={{
                         position: 'absolute',
                         left: '50%',
+                        fontFamily: subSettings.fontName
+                          ? `"${subSettings.fontName}", var(--font-khmer), sans-serif`
+                          : 'var(--font-khmer)',
                         transform: subSettings.position === 'middle' ? 'translate(-50%, -50%)' : 'translateX(-50%)',
                         ...(subSettings.position === 'top'
                           ? { top: `${Math.max(6, Math.min(48, Math.round((subSettings.verticalOffset || 55) * 0.28)))}px` }

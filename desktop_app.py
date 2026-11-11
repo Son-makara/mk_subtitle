@@ -222,6 +222,7 @@ def main():
 
     host = "127.0.0.1"
     port = find_available_port(8800)
+    target_url = f"http://{host}:{port}"
 
     # 1. Start background server thread
     server_thread = threading.Thread(
@@ -231,25 +232,106 @@ def main():
     )
     server_thread.start()
 
-    # 2. Wait for server socket readiness
-    max_wait = 10.0
-    start_time = time.time()
-    while time.time() - start_time < max_wait:
-        if is_port_in_use(port, host):
-            break
-        time.sleep(0.1)
-
-    url = f"http://{host}:{port}"
-    print(f"[MK Movie Studio] Running native desktop on {url}")
-
     icon_path = os.path.join(BASE_PATH, "assets", "logo.ico")
     if not os.path.exists(icon_path):
         icon_path = None
 
-    # 3. Create native Windows WebView2 window
+    # Ultra-clean branded dark splash screen shown instantly (< 0.8s)
+    splash_html = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>MK Movie Studio</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: #0b0f19;
+            color: #f1f5f9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            overflow: hidden;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+        .logo-box {
+            width: 68px;
+            height: 68px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.45);
+            font-size: 30px;
+            font-weight: 800;
+            color: white;
+            letter-spacing: -1px;
+        }
+        .title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: #ffffff;
+        }
+        .subtitle {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-top: -10px;
+        }
+        .loader-bar {
+            width: 220px;
+            height: 4px;
+            background: #1e293b;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+            margin-top: 6px;
+        }
+        .loader-progress {
+            width: 40%;
+            height: 100%;
+            background: linear-gradient(90deg, #ef4444, #f59e0b);
+            border-radius: 4px;
+            position: absolute;
+            animation: slide 1.1s infinite ease-in-out;
+        }
+        @keyframes slide {
+            0% { left: -40%; }
+            50% { left: 50%; }
+            100% { left: 100%; }
+        }
+        .status-text {
+            font-size: 11px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo-box">MK</div>
+        <div class="title">MK Movie Studio</div>
+        <div class="subtitle">Khmer AI Subtitle & Dubbing Studio</div>
+        <div class="loader-bar">
+            <div class="loader-progress"></div>
+        </div>
+        <div class="status-text">Starting studio engine...</div>
+    </div>
+</body>
+</html>"""
+
+    # 2. Create native window immediately with instant splash (< 0.8s)
     window = webview.create_window(
         title="MK Movie - Subtitle & Dubbing Studio",
-        url=url,
+        html=splash_html,
         width=1320,
         height=850,
         min_size=(1024, 680),
@@ -258,8 +340,21 @@ def main():
         zoomable=True
     )
 
-    # 4. Start GUI event loop
-    webview.start(icon=icon_path, debug=False)
+    def on_window_ready(win):
+        # Wait for FastAPI server to bind port in background thread
+        max_wait = 15.0
+        start_time = time.time()
+        while time.time() - start_time < max_wait:
+            if is_port_in_use(port, host):
+                break
+            time.sleep(0.08)
+
+        # Seamlessly navigate to the interactive app
+        time.sleep(0.1)
+        win.load_url(target_url)
+
+    # 3. Start GUI event loop immediately with instant visual feedback
+    webview.start(on_window_ready, window, icon=icon_path, debug=False)
     sys.exit(0)
 
 if __name__ == "__main__":

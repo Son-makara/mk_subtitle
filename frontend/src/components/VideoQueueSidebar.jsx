@@ -13,7 +13,8 @@ import {
   Settings,
   Flame,
   Square,
-  Keyboard
+  Keyboard,
+  FolderPlus
 } from 'lucide-react';
 import { formatTime } from '../utils/time_formatter';
 
@@ -34,6 +35,7 @@ export default function VideoQueueSidebar({
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
 
   // Tick box selection state for queue items
   const [selectedQueueIds, setSelectedQueueIds] = useState(() => queue.map((v) => v.id));
@@ -67,7 +69,16 @@ export default function VideoQueueSidebar({
 
   const handleFilesChosen = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      onUploadVideos(Array.from(e.target.files));
+      const videoFiles = Array.from(e.target.files).filter((f) =>
+        f.type.startsWith('video/') || /\.(mp4|mkv|mov|avi|webm|flv|m4v|ts)$/i.test(f.name)
+      );
+      if (videoFiles.length > 0) {
+        // Natural sort by filename so S01E001, S01E002, ..., S01E060 are strictly ordered
+        videoFiles.sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+        );
+        onUploadVideos(videoFiles);
+      }
       e.target.value = '';
     }
   };
@@ -82,9 +93,12 @@ export default function VideoQueueSidebar({
     e.stopPropagation();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const videoFiles = Array.from(e.dataTransfer.files).filter((f) =>
-        f.type.startsWith('video/') || /\.(mp4|mkv|mov|avi|webm|flv|m4v)$/i.test(f.name)
+        f.type.startsWith('video/') || /\.(mp4|mkv|mov|avi|webm|flv|m4v|ts)$/i.test(f.name)
       );
       if (videoFiles.length > 0) {
+        videoFiles.sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+        );
         onUploadVideos(videoFiles);
       }
     }
@@ -388,11 +402,40 @@ export default function VideoQueueSidebar({
           <Plus size={16} />
         </button>
 
+        <button
+          onClick={() => folderInputRef.current && folderInputRef.current.click()}
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
+            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+            border: '1px solid rgba(59, 130, 246, 0.4)',
+            color: '#60a5fa',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer'
+          }}
+          title="Add Drama/Series Folder (Auto-loads all episodes)"
+        >
+          <FolderPlus size={15} />
+        </button>
+
         <input
           type="file"
           ref={fileInputRef}
           multiple
           accept="video/*"
+          style={{ display: 'none' }}
+          onChange={handleFilesChosen}
+        />
+
+        <input
+          type="file"
+          ref={folderInputRef}
+          webkitdirectory=""
+          directory=""
+          multiple
           style={{ display: 'none' }}
           onChange={handleFilesChosen}
         />
@@ -579,9 +622,27 @@ export default function VideoQueueSidebar({
               justifyContent: 'center',
               cursor: 'pointer'
             }}
-            title="Add Video(s)"
+            title="Add Video File(s)"
           >
             <Plus size={14} />
+          </button>
+          <button
+            onClick={() => folderInputRef.current && folderInputRef.current.click()}
+            style={{
+              width: '26px',
+              height: '26px',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(59, 130, 246, 0.15)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              color: '#60a5fa',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+            title="Add Drama/Series Folder (Auto-loads all episodes)"
+          >
+            <FolderPlus size={13} />
           </button>
           {queue.length > 0 && (
             <button
@@ -648,6 +709,15 @@ export default function VideoQueueSidebar({
             ref={fileInputRef}
             multiple
             accept="video/*"
+            style={{ display: 'none' }}
+            onChange={handleFilesChosen}
+          />
+          <input
+            type="file"
+            ref={folderInputRef}
+            webkitdirectory=""
+            directory=""
+            multiple
             style={{ display: 'none' }}
             onChange={handleFilesChosen}
           />

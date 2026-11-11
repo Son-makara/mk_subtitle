@@ -21,18 +21,36 @@ export default function ExportModal({
 }) {
   const [subFormat, setSubFormat] = useState('srt');
   const [useTranslation, setUseTranslation] = useState(true);
-  const [renderScope, setRenderScope] = useState('single'); // 'single' or 'batch'
+  const [renderScope, setRenderScope] = useState(() => (queue && queue.length > 1 ? 'batch' : 'single'));
   const [batchOutputMode, setBatchOutputMode] = useState('separate'); // 'separate' or 'combine'
   const [combinedTitle, setCombinedTitle] = useState('');
 
-  // Default combined title based on first video or project name
+  // Auto-switch renderScope to batch when modal opens with multiple queue items
+  React.useEffect(() => {
+    if (isOpen && ((selectedQueueIds && selectedQueueIds.length > 1) || (queue && queue.length > 1))) {
+      setRenderScope('batch');
+    }
+  }, [isOpen, selectedQueueIds, queue]);
+
+  // Default combined title based on first video, folder name, or series title
   React.useEffect(() => {
     if (!combinedTitle && queue && queue.length > 0) {
       const firstVid = queue[0];
-      const base = (firstVid.name || firstVid.serverFilename || 'Series')
-        .replace(/\.[^/.]+$/, '')
-        .replace(/^mk_sub_/, '')
-        .replace(/_dubbed$/, '');
+      const folder = firstVid.folderName;
+      let base = '';
+      if (folder) {
+        base = folder.trim();
+      } else {
+        base = (firstVid.name || firstVid.serverFilename || 'Series')
+          .replace(/\.[^/.]+$/, '')
+          .replace(/^mk_sub_/, '')
+          .replace(/_dubbed$/, '')
+          .replace(/S\d+E\d+/i, '')
+          .replace(/第?\d+集/g, '')
+          .replace(/[-_ ]+$/, '')
+          .trim();
+      }
+      if (!base) base = 'Combined_Series';
       setCombinedTitle(`${base}_Full_Movie.mp4`);
     }
   }, [queue, combinedTitle]);
@@ -54,15 +72,48 @@ export default function ExportModal({
 
   // Subtitle settings state with sync to parent & localStorage
   const [subtitleMode, setSubtitleMode] = useState(subSettings?.subtitleMode || 'khmer');
+  const [fontName, setFontName] = useState(subSettings?.fontName || 'Kantumruy Pro');
   const [fontSize, setFontSize] = useState(subSettings?.fontSize || 24);
   const [position, setPosition] = useState(subSettings?.position || 'bottom');
   const [verticalOffset, setVerticalOffset] = useState(subSettings?.verticalOffset || 55);
   const [stylePreset, setStylePreset] = useState(subSettings?.stylePreset || 'modern_yellow');
 
+  // Internal local PC fonts state fetched from local Windows backend
+  const [systemFonts, setSystemFonts] = useState({
+    khmer: [
+      'Kantumruy Pro',
+      'Khmer OS Siemreap',
+      'Khmer OS Battambang',
+      'Khmer OS Muol',
+      'Khmer OS Content',
+      'Leelawadee UI'
+    ],
+    popular: ['Arial', 'Segoe UI', 'Tahoma', 'Calibri', 'Impact'],
+    all: [],
+    total_count: 0,
+    khmer_count: 0
+  });
+  const [isCustomFont, setIsCustomFont] = useState(false);
+  const [customFontInput, setCustomFontInput] = useState('');
+
+  React.useEffect(() => {
+    fetch('/api/system/fonts')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && (data.khmer || data.all)) {
+          setSystemFonts(data);
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not fetch system fonts:', err);
+      });
+  }, []);
+
   // Synchronize state if subSettings prop changes
   React.useEffect(() => {
     if (subSettings) {
       if (subSettings.subtitleMode !== undefined) setSubtitleMode(subSettings.subtitleMode);
+      if (subSettings.fontName !== undefined) setFontName(subSettings.fontName);
       if (subSettings.fontSize !== undefined) setFontSize(subSettings.fontSize);
       if (subSettings.position !== undefined) setPosition(subSettings.position);
       if (subSettings.verticalOffset !== undefined) setVerticalOffset(subSettings.verticalOffset);
@@ -73,12 +124,14 @@ export default function ExportModal({
   const updateSettings = (partial) => {
     const updated = {
       subtitleMode: partial.subtitleMode !== undefined ? partial.subtitleMode : subtitleMode,
+      fontName: partial.fontName !== undefined ? partial.fontName : fontName,
       fontSize: partial.fontSize !== undefined ? partial.fontSize : fontSize,
       position: partial.position !== undefined ? partial.position : position,
       verticalOffset: partial.verticalOffset !== undefined ? partial.verticalOffset : verticalOffset,
       stylePreset: partial.stylePreset !== undefined ? partial.stylePreset : stylePreset,
     };
     if (partial.subtitleMode !== undefined) setSubtitleMode(partial.subtitleMode);
+    if (partial.fontName !== undefined) setFontName(partial.fontName);
     if (partial.fontSize !== undefined) setFontSize(partial.fontSize);
     if (partial.position !== undefined) setPosition(partial.position);
     if (partial.verticalOffset !== undefined) setVerticalOffset(partial.verticalOffset);
@@ -285,6 +338,54 @@ export default function ExportModal({
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                     {downloadResult.export_filename}
                   </p>
+                </div>
+
+                {/* Subtitle Font & Style Info Card with 1-click Change Button */}
+                <div
+                  style={{
+                    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                    border: '1px solid var(--border-light)',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    gap: '8px',
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Type size={16} style={{ color: '#38bdf8' }} />
+                    <div style={{ textAlign: 'left' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Subtitle Font: </span>
+                      <strong style={{ color: '#38bdf8' }}>{fontName}</strong>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}> ({fontSize}px • {stylePreset === 'modern_yellow' ? 'Yellow' : stylePreset === 'box_dark' ? 'Dark Box' : 'White'})</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('settings')}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                      color: '#f59e0b',
+                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Change subtitle font, size, position or style and re-render"
+                  >
+                    <Sliders size={12} />
+                    <span>Change Font & Re-render</span>
+                  </button>
                 </div>
 
                 {/* Storage saving note */}
@@ -703,6 +804,7 @@ export default function ExportModal({
                         style={{
                           position: 'absolute',
                           left: '50%',
+                          fontFamily: fontName ? `"${fontName}", var(--font-khmer), sans-serif` : 'var(--font-khmer)',
                           transform: position === 'middle' ? 'translate(-50%, -50%)' : 'translateX(-50%)',
                           ...(position === 'top'
                             ? { top: `${Math.max(6, Math.min(45, Math.round(verticalOffset * 0.32)))}px` }
@@ -774,6 +876,162 @@ export default function ExportModal({
                   {/* Font Size & Position Controls (Visible when not 'none') */}
                   {subtitleMode !== 'none' && (
                     <>
+                      {/* Font Family Selector (Local PC Fonts) */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Type size={12} style={{ color: '#38bdf8' }} /> Font Family (Local PC):
+                          </label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {systemFonts.khmer && systemFonts.khmer.length > 0 && (
+                              <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 600 }}>
+                                ✓ {systemFonts.khmer.length} Khmer PC Fonts
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCustomFont(!isCustomFont);
+                                if (!isCustomFont) setCustomFontInput(fontName);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#38bdf8',
+                                fontSize: '10px',
+                                cursor: 'pointer',
+                                textDecoration: 'underline',
+                                padding: 0
+                              }}
+                            >
+                              {isCustomFont ? 'Choose from list' : 'Custom name'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {isCustomFont ? (
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <input
+                              type="text"
+                              value={customFontInput}
+                              onChange={(e) => setCustomFontInput(e.target.value)}
+                              placeholder="Type font name installed on PC (e.g. Khmer OS Battambang)"
+                              style={{
+                                flex: 1,
+                                padding: '6px 8px',
+                                fontSize: '11px',
+                                backgroundColor: 'var(--bg-base)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '6px',
+                                color: 'var(--text-bright)',
+                                outline: 'none'
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (customFontInput.trim()) {
+                                  setFontName(customFontInput.trim());
+                                  updateSettings({ fontName: customFontInput.trim() });
+                                }
+                              }}
+                              className="btn-primary"
+                              style={{ padding: '6px 12px', fontSize: '11px' }}
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        ) : (
+                          <select
+                            value={fontName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFontName(val);
+                              updateSettings({ fontName: val });
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '6px 8px',
+                              fontSize: '11px',
+                              backgroundColor: 'var(--bg-base)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '6px',
+                              color: 'var(--text-bright)',
+                              outline: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {/* Optgroup: Khmer Fonts installed on PC */}
+                            {systemFonts.khmer && systemFonts.khmer.length > 0 && (
+                              <optgroup label={`🇰🇭 Local Khmer Fonts (${systemFonts.khmer.length})`}>
+                                {systemFonts.khmer.map((fn) => (
+                                  <option key={fn} value={fn}>
+                                    {fn}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+
+                            {/* Optgroup: Popular System Fonts */}
+                            {systemFonts.popular && systemFonts.popular.length > 0 && (
+                              <optgroup label="💻 Popular System Fonts">
+                                {systemFonts.popular.map((fn) => (
+                                  <option key={fn} value={fn}>
+                                    {fn}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+
+                            {/* Optgroup: All Installed Fonts */}
+                            {systemFonts.all && systemFonts.all.length > 0 && (
+                              <optgroup label={`🌐 All Windows Fonts (${systemFonts.all.length})`}>
+                                {systemFonts.all.map((fn) => (
+                                  <option key={fn} value={fn}>
+                                    {fn}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        )}
+
+                        {/* Top Khmer Favorites Quick Buttons */}
+                        <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                          {[
+                            'Kantumruy Pro',
+                            'Khmer OS Siemreap',
+                            'Khmer OS Battambang',
+                            'Khmer OS Muol',
+                            'Leelawadee UI'
+                          ].map((fPreset) => {
+                            const isChosen = fontName.toLowerCase() === fPreset.toLowerCase();
+                            return (
+                              <button
+                                key={fPreset}
+                                type="button"
+                                onClick={() => {
+                                  setFontName(fPreset);
+                                  updateSettings({ fontName: fPreset });
+                                }}
+                                style={{
+                                  padding: '3px 6px',
+                                  borderRadius: '4px',
+                                  border: `1px solid ${isChosen ? '#38bdf8' : 'var(--border-color)'}`,
+                                  backgroundColor: isChosen ? 'rgba(56, 189, 248, 0.15)' : 'var(--bg-base)',
+                                  color: isChosen ? '#38bdf8' : 'var(--text-muted)',
+                                  fontSize: '10px',
+                                  fontWeight: isChosen ? 600 : 400,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {fPreset}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
                       {/* Font Size Slider & Quick Pills */}
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
@@ -1050,6 +1308,7 @@ export default function ExportModal({
                     onClick={() => {
                       const options = {
                         subtitle_style: stylePreset,
+                        font_name: fontName,
                         font_size: fontSize,
                         subtitle_position: position,
                         vertical_offset: verticalOffset,

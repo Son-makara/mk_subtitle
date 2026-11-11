@@ -6,8 +6,6 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 import numpy as np
-import librosa
-import soundfile as sf
 
 from ..config import UPLOADS_DIR, AUDIO_CACHE_DIR, BASE_DIR, FFMPEG_PATH, SUBPROCESS_FLAGS
 from .whisper_stt import resolve_media_file
@@ -111,6 +109,8 @@ def separate_vocals_sync(
             progress_callback(15.0, "Loading audio spectrogram...")
 
         # 2. Load audio array [2, samples]
+        import soundfile as sf
+        import librosa
         audio_data, sr = sf.read(str(temp_raw_wav), dtype='float32')
         if audio_data.ndim == 1:
             # Duplicate mono to stereo

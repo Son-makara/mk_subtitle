@@ -427,25 +427,31 @@ def concat_videos(
 
     resolved_paths: List[Path] = []
     for fn in video_filenames:
-        clean = Path(str(fn).replace("/api/exports/", "").replace("/api/video/", "").split("?")[0]).name
         found = None
-        for d in [EXPORTS_DIR, UPLOADS_DIR]:
-            p = d / clean
-            if p.exists() and p.is_file():
-                found = p
-                break
+        # 1. Direct path check (local disk or network share)
+        raw_path = Path(str(fn).split("?")[0])
+        if raw_path.is_file() and raw_path.exists():
+            found = raw_path
+
         if not found:
-            # Try stem matching
-            stem = Path(clean).stem.lower()
+            clean = Path(str(fn).replace("/api/exports/", "").replace("/api/video/", "").split("?")[0]).name
             for d in [EXPORTS_DIR, UPLOADS_DIR]:
-                for f in d.glob("*"):
-                    if f.is_file() and not f.name.startswith(".gitkeep") and f.stem.lower() == stem:
-                        found = f
-                        break
-                if found:
+                p = d / clean
+                if p.exists() and p.is_file():
+                    found = p
                     break
+            if not found:
+                # Try stem matching
+                stem = Path(clean).stem.lower()
+                for d in [EXPORTS_DIR, UPLOADS_DIR]:
+                    for f in d.glob("*"):
+                        if f.is_file() and not f.name.startswith(".gitkeep") and f.stem.lower() == stem:
+                            found = f
+                            break
+                    if found:
+                        break
         if not found:
-            raise FileNotFoundError(f"Video file '{fn}' not found in exports or uploads.")
+            raise FileNotFoundError(f"Video file '{fn}' not found in exports, uploads, or local disk.")
         resolved_paths.append(found)
 
     # Determine output filename
@@ -495,25 +501,18 @@ def concat_videos(
 
         stream_copy_success = proc.returncode == 0 and export_path.exists() and export_path.stat().st_size > 1000
 
-        # 2. Fallback to re-encode concat filter if stream copy is not feasible
+        # 2. Fallback to re-encode concat if stream copy is not feasible
         if not stream_copy_success:
             if job_id:
                 RENDER_PROGRESS[job_id]["progress"] = 50
                 RENDER_PROGRESS[job_id]["message"] = "Stream copy mismatch; re-encoding to seamless master MP4..."
 
-            inputs = []
-            filter_segments = []
-            for i, vp in enumerate(resolved_paths):
-                inputs.extend(["-i", str(vp)])
-                filter_segments.append(f"[{i}:v][{i}:a]")
-
-            filter_str = f"{''.join(filter_segments)}concat=n={len(resolved_paths)}:v=1:a=1[v][a]"
+            # First try re-encoding with concat demuxer (supports any number of files cleanly on Windows)
             reencode_cmd = [
                 FFMPEG_PATH, "-y",
-                *inputs,
-                "-filter_complex", filter_str,
-                "-map", "[v]",
-                "-map", "[a]",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(temp_list_path),
                 "-c:v", "libx264",
                 "-preset", "veryfast",
                 "-crf", "22",
@@ -529,7 +528,34 @@ def concat_videos(
                 creationflags=SUBPROCESS_FLAGS
             )
             if rc2.returncode != 0 or not export_path.exists() or export_path.stat().st_size < 1000:
-                raise RuntimeError(f"Video concatenation failed: {rc2.stderr[-400:]}")
+                # If concat demuxer re-encode fails and list is small, try filter_complex
+                if len(resolved_paths) <= 30:
+                    inputs = []
+                    filter_segments = []
+                    for i, vp in enumerate(resolved_paths):
+                        inputs.extend(["-i", str(vp)])
+                        filter_segments.append(f"[{i}:v][{i}:a]")
+
+                    filter_str = f"{''.join(filter_segments)}concat=n={len(resolved_paths)}:v=1:a=1[v][a]"
+                    fc_cmd = [
+                        FFMPEG_PATH, "-y",
+                        *inputs,
+                        "-filter_complex", filter_str,
+                        "-map", "[v]",
+                        "-map", "[a]",
+                        "-c:v", "libx264",
+                        "-preset", "veryfast",
+                        "-crf", "22",
+                        "-pix_fmt", "yuv420p",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        str(export_path)
+                    ]
+                    rc3 = subprocess.run(fc_cmd, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+                    if rc3.returncode != 0 or not export_path.exists() or export_path.stat().st_size < 1000:
+                        raise RuntimeError(f"Video concatenation failed: {rc3.stderr[-400:]}")
+                else:
+                    raise RuntimeError(f"Video concatenation failed: {rc2.stderr[-400:]}")
 
         if job_id:
             RENDER_PROGRESS[job_id]["progress"] = 100

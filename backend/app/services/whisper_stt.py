@@ -6,8 +6,6 @@ import asyncio
 from pathlib import Path
 from typing import List, Optional, Tuple
 import numpy as np
-import scipy.signal
-import soundfile as sf
 
 from ..config import UPLOADS_DIR, AUDIO_CACHE_DIR, FFMPEG_PATH, SUBPROCESS_FLAGS
 from ..models.subtitle import SubtitleItem
@@ -98,6 +96,7 @@ def detect_voice_gender(audio_segment: np.ndarray, sr: int = 16000) -> str:
             return "Female"
 
         # Bandpass filter for human vocal fundamental range (70 Hz to 350 Hz)
+        import scipy.signal
         sos = scipy.signal.butter(4, [70, 350], btype="bandpass", fs=sr, output="sos")
         filtered = scipy.signal.sosfilt(sos, audio)
 
@@ -250,6 +249,7 @@ def run_whisper_transcribe_sync(
     full_audio = None
     sample_rate = 16000
     try:
+        import soundfile as sf
         full_audio, sample_rate = sf.read(audio_path)
     except Exception as e:
         print(f"Warning: could not read audio for gender classification: {e}")

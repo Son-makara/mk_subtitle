@@ -373,6 +373,99 @@ async def tts_batch(req: TTSBatchRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Batch TTS error: {str(e)}")
 
+# ==================== System & Local PC Fonts ====================
+
+_CACHED_SYSTEM_FONTS = None
+
+def get_system_installed_fonts():
+    global _CACHED_SYSTEM_FONTS
+    if _CACHED_SYSTEM_FONTS is not None:
+        return _CACHED_SYSTEM_FONTS
+
+    fonts = set()
+    khmer_keywords = [
+        "khmer", "kantumruy", "moul", "siemreap", "battambang", "leelawadee",
+        "dangrek", "bokor", "chenla", "preah", "chrieng", "fasthand", "freehand",
+        "koulen", "angkor", "bayon", "content", "muol", "akbalthom", "nida",
+        "rotanak", "mondulkiri", "kampot", "kampong", "busra"
+    ]
+
+    # Windows registry fonts inspection
+    if sys.platform == "win32":
+        try:
+            import winreg
+            import re
+            for root, key_path in [
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"),
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts")
+            ]:
+                try:
+                    with winreg.OpenKey(root, key_path) as key:
+                        val_count = winreg.QueryInfoKey(key)[1]
+                        for i in range(val_count):
+                            val_name, _, _ = winreg.EnumValue(key, i)
+                            clean_name = re.sub(r"\s*\([^)]*\)$", "", val_name).strip()
+                            if "&" in clean_name:
+                                for part in clean_name.split("&"):
+                                    p = part.strip()
+                                    if p:
+                                        fonts.add(p)
+                            elif clean_name:
+                                fonts.add(clean_name)
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"Notice: Font detection error: {e}")
+
+    # Fallback default fonts if registry returned nothing or on non-Windows
+    default_khmer = [
+        "Kantumruy Pro", "Kantumruy", "Khmer OS Siemreap", "Khmer OS Battambang",
+        "Khmer OS Muol", "Khmer OS Content", "Khmer OS Bokor", "Khmer OS Dangrek",
+        "Khmer OS Fasthand", "Khmer OS Freehand", "Leelawadee UI", "Noto Sans Khmer"
+    ]
+    for df in default_khmer:
+        fonts.add(df)
+
+    all_sorted = sorted(list(fonts), key=lambda s: s.lower())
+
+    khmer_fonts = [
+        f for f in all_sorted
+        if any(kw in f.lower() for kw in khmer_keywords)
+    ]
+    # Priority favorites at top of list
+    priority_khmer = [
+        "Kantumruy Pro", "Khmer OS Siemreap", "Khmer OS Battambang",
+        "Khmer OS Muol", "Khmer OS Content", "Leelawadee UI", "Battambang", "Moul"
+    ]
+    khmer_sorted = []
+    for pk in priority_khmer:
+        matches = [f for f in khmer_fonts if f.lower() == pk.lower()]
+        if matches and matches[0] not in khmer_sorted:
+            khmer_sorted.append(matches[0])
+    for f in khmer_fonts:
+        if f not in khmer_sorted:
+            khmer_sorted.append(f)
+
+    popular_system = [
+        "Arial", "Segoe UI", "Tahoma", "Calibri", "Impact",
+        "Trebuchet MS", "Verdana", "Times New Roman"
+    ]
+    popular_found = [f for f in popular_system if f in fonts]
+
+    _CACHED_SYSTEM_FONTS = {
+        "khmer": khmer_sorted,
+        "popular": popular_found or popular_system,
+        "all": all_sorted,
+        "total_count": len(all_sorted),
+        "khmer_count": len(khmer_sorted)
+    }
+    return _CACHED_SYSTEM_FONTS
+
+@app.get("/api/system/fonts")
+async def get_system_fonts_endpoint():
+    """Returns fonts installed locally on this PC, categorized for subtitle rendering."""
+    return get_system_installed_fonts()
+
 # ==================== Video Rendering & Burning ====================
 
 @app.get("/api/render/progress/{job_id}")

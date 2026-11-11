@@ -1,5 +1,17 @@
-import React, { useRef } from 'react';
-import { FileText, Users, Volume2, Loader2, AlertCircle, Languages, Sparkles } from 'lucide-react';
+import React, { useRef, useState, useMemo } from 'react';
+import {
+  FileText,
+  Users,
+  Volume2,
+  Loader2,
+  AlertCircle,
+  Languages,
+  Sparkles,
+  RotateCcw,
+  CheckCircle2,
+  Clock,
+  Filter
+} from 'lucide-react';
 import { formatTime } from '../utils/time_formatter';
 
 export default function SubtitleDataTable({
@@ -19,14 +31,95 @@ export default function SubtitleDataTable({
   isGeneratingAudio = false
 }) {
   const lastSelectedIndexRef = useRef(null);
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'ready' | 'error' | 'pending' | 'generating'
 
-  const isAllSelected = subtitles.length > 0 && selectedIds.length >= subtitles.length;
+  // Calculate audio status counts
+  const statusCounts = useMemo(() => {
+    let ready = 0;
+    let error = 0;
+    let generating = 0;
+    let pending = 0;
+
+    subtitles.forEach((s) => {
+      if (s.audio_status === 'generating') {
+        generating++;
+      } else if (s.audio_url || s.audio_status === 'ready') {
+        ready++;
+      } else if (s.audio_status === 'error') {
+        error++;
+      } else {
+        pending++;
+      }
+    });
+
+    return { ready, error, generating, pending, total: subtitles.length };
+  }, [subtitles]);
+
+  // Filter subtitles based on active audio status tab
+  const filteredSubtitles = useMemo(() => {
+    if (statusFilter === 'all') return subtitles;
+    if (statusFilter === 'ready') {
+      return subtitles.filter((s) => s.audio_url || s.audio_status === 'ready');
+    }
+    if (statusFilter === 'error') {
+      return subtitles.filter((s) => s.audio_status === 'error');
+    }
+    if (statusFilter === 'pending') {
+      return subtitles.filter(
+        (s) =>
+          !s.audio_url &&
+          s.audio_status !== 'ready' &&
+          s.audio_status !== 'error' &&
+          s.audio_status !== 'generating'
+      );
+    }
+    if (statusFilter === 'generating') {
+      return subtitles.filter((s) => s.audio_status === 'generating');
+    }
+    return subtitles;
+  }, [subtitles, statusFilter]);
+
+  const isAllSelected =
+    filteredSubtitles.length > 0 &&
+    filteredSubtitles.every((s) => selectedIds.includes(s.id));
 
   const handleSelectAll = (checked) => {
     if (checked) {
-      onSelectIds(subtitles.map((s) => s.id));
+      const newSelected = Array.from(
+        new Set([...selectedIds, ...filteredSubtitles.map((s) => s.id)])
+      );
+      onSelectIds(newSelected);
     } else {
-      onSelectIds([]);
+      const filteredIdSet = new Set(filteredSubtitles.map((s) => s.id));
+      onSelectIds(selectedIds.filter((id) => !filteredIdSet.has(id)));
+    }
+  };
+
+  const handleSelectErrors = () => {
+    const errorIds = subtitles
+      .filter((s) => s.audio_status === 'error')
+      .map((s) => s.id);
+    if (errorIds.length > 0) {
+      onSelectIds(errorIds);
+    }
+  };
+
+  const handleRetryErrors = () => {
+    const errorIds = subtitles
+      .filter((s) => s.audio_status === 'error')
+      .map((s) => s.id);
+    if (errorIds.length === 0) return;
+    onSelectIds(errorIds);
+    if (onGenerateAudioClick) {
+      onGenerateAudioClick('selected');
+    }
+  };
+
+  const handleRetrySingle = (item, e) => {
+    e.stopPropagation();
+    onSelectIds([item.id]);
+    if (onGenerateAudioClick) {
+      onGenerateAudioClick('selected');
     }
   };
 
@@ -34,7 +127,7 @@ export default function SubtitleDataTable({
     if (e.shiftKey && lastSelectedIndexRef.current !== null) {
       const start = Math.min(index, lastSelectedIndexRef.current);
       const end = Math.max(index, lastSelectedIndexRef.current);
-      const sliceIds = subtitles.slice(start, end + 1).map((s) => s.id);
+      const sliceIds = filteredSubtitles.slice(start, end + 1).map((s) => s.id);
       onSelectIds(Array.from(new Set([...selectedIds, ...sliceIds])));
     } else if (e.ctrlKey || e.metaKey) {
       onSelectIds((prev) =>
@@ -317,6 +410,253 @@ export default function SubtitleDataTable({
         )}
       </div>
 
+      {/* Audio Status & Filter Helper Bar */}
+      {subtitles.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 10px',
+            marginBottom: '8px',
+            backgroundColor: 'var(--bg-panel)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            gap: '8px',
+            flexWrap: 'wrap'
+          }}
+        >
+          {/* Left: Filter Tabs with dynamic counters */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                marginRight: '2px'
+              }}
+            >
+              <Filter size={12} /> Filter:
+            </span>
+
+            {/* All */}
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              style={{
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontWeight: statusFilter === 'all' ? 600 : 400,
+                borderRadius: '6px',
+                border: '1px solid',
+                borderColor: statusFilter === 'all' ? 'var(--accent-primary)' : 'var(--border-color)',
+                backgroundColor: statusFilter === 'all' ? 'rgba(79, 70, 229, 0.15)' : 'transparent',
+                color: statusFilter === 'all' ? 'var(--accent-text)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              All <span style={{ opacity: 0.7, fontSize: '10px' }}>({statusCounts.total})</span>
+            </button>
+
+            {/* Ready */}
+            <button
+              type="button"
+              onClick={() => setStatusFilter('ready')}
+              style={{
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontWeight: statusFilter === 'ready' ? 600 : 400,
+                borderRadius: '6px',
+                border: '1px solid',
+                borderColor: statusFilter === 'ready' ? '#10b981' : 'var(--border-color)',
+                backgroundColor: statusFilter === 'ready' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                color: statusFilter === 'ready' ? '#34d399' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+              title="Show only lines with ready audio"
+            >
+              <CheckCircle2 size={12} style={{ color: '#10b981' }} />
+              Ready <span style={{ opacity: 0.7, fontSize: '10px' }}>({statusCounts.ready})</span>
+            </button>
+
+            {/* Errors - prominently highlighted if > 0 */}
+            <button
+              type="button"
+              onClick={() => setStatusFilter('error')}
+              style={{
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontWeight: statusFilter === 'error' || statusCounts.error > 0 ? 600 : 400,
+                borderRadius: '6px',
+                border: '1px solid',
+                borderColor:
+                  statusFilter === 'error'
+                    ? '#ef4444'
+                    : statusCounts.error > 0
+                    ? 'rgba(239, 68, 68, 0.5)'
+                    : 'var(--border-color)',
+                backgroundColor:
+                  statusFilter === 'error'
+                    ? 'rgba(239, 68, 68, 0.25)'
+                    : statusCounts.error > 0
+                    ? 'rgba(239, 68, 68, 0.1)'
+                    : 'transparent',
+                color: statusCounts.error > 0 ? '#f87171' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                boxShadow: statusCounts.error > 0 ? '0 0 6px rgba(239, 68, 68, 0.2)' : 'none'
+              }}
+              title="Filter to show only failed audio lines"
+            >
+              <AlertCircle size={12} style={{ color: '#ef4444' }} />
+              Errors{' '}
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color: statusCounts.error > 0 ? '#ef4444' : 'inherit'
+                }}
+              >
+                ({statusCounts.error})
+              </span>
+            </button>
+
+            {/* Pending */}
+            <button
+              type="button"
+              onClick={() => setStatusFilter('pending')}
+              style={{
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontWeight: statusFilter === 'pending' ? 600 : 400,
+                borderRadius: '6px',
+                border: '1px solid',
+                borderColor: statusFilter === 'pending' ? '#eab308' : 'var(--border-color)',
+                backgroundColor: statusFilter === 'pending' ? 'rgba(234, 179, 8, 0.15)' : 'transparent',
+                color: statusFilter === 'pending' ? '#facc15' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+              title="Show only lines pending audio generation"
+            >
+              <Clock size={12} style={{ color: '#eab308' }} />
+              Pending <span style={{ opacity: 0.7, fontSize: '10px' }}>({statusCounts.pending})</span>
+            </button>
+
+            {/* Generating (if active) */}
+            {statusCounts.generating > 0 && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter('generating')}
+                style={{
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  borderRadius: '6px',
+                  border: '1px solid var(--accent-primary)',
+                  backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                  color: 'var(--accent-text)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <Loader2 size={12} className="animate-spin" />
+                Generating ({statusCounts.generating})
+              </button>
+            )}
+
+            {/* Show all shortcut if filter is active */}
+            {statusFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#38bdf8',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  padding: '2px 4px',
+                  textDecoration: 'underline'
+                }}
+              >
+                Reset Filter
+              </button>
+            )}
+          </div>
+
+          {/* Right: Quick Error Actions if errors exist */}
+          {statusCounts.error > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={handleSelectErrors}
+                style={{
+                  padding: '4px 9px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  backgroundColor: 'transparent',
+                  color: '#f87171',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                title="Select all lines with audio errors"
+              >
+                Select Errors ({statusCounts.error})
+              </button>
+
+              <button
+                type="button"
+                onClick={handleRetryErrors}
+                disabled={isGeneratingAudio}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  backgroundColor: isGeneratingAudio ? '#991b1b' : '#dc2626',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: isGeneratingAudio ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  boxShadow: '0 2px 4px rgba(220, 38, 38, 0.3)',
+                  transition: 'background-color 0.15s ease'
+                }}
+                title="Immediately retry generating audio for all failed lines"
+              >
+                <RotateCcw size={12} className={isGeneratingAudio ? 'animate-spin' : ''} />
+                Retry Failed ({statusCounts.error})
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Table Container */}
       <div
         style={{
@@ -444,11 +784,35 @@ export default function SubtitleDataTable({
                     No subtitle data loaded. Import an SRT file or click Transcribe to generate.
                   </td>
                 </tr>
+              ) : filteredSubtitles.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{
+                      padding: '48px 16px',
+                      textAlign: 'center',
+                      color: 'var(--text-muted)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                      <span>No subtitle lines match the "{statusFilter}" audio status.</span>
+                      <button
+                        type="button"
+                        onClick={() => setStatusFilter('all')}
+                        className="btn-secondary"
+                        style={{ padding: '4px 12px', fontSize: '11px', marginTop: '4px' }}
+                      >
+                        Show All Lines ({subtitles.length})
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               ) : (
-                subtitles.map((item, index) => {
+                filteredSubtitles.map((item, index) => {
                   const isSelected = selectedIds.includes(item.id);
                   const isActive = currentTime >= item.start_time && currentTime <= item.end_time;
                   const isPlayingThis = playingAudioId === item.id;
+                  const isError = item.audio_status === 'error';
                   const displayText = item.translated_text || item.text;
 
                   return (
@@ -460,26 +824,34 @@ export default function SubtitleDataTable({
                           ? 'rgba(16, 185, 129, 0.15)'
                           : isActive
                           ? 'rgba(79, 70, 229, 0.2)'
+                          : isError
+                          ? 'rgba(239, 68, 68, 0.08)'
                           : isSelected
                           ? 'var(--bg-hover)'
                           : 'transparent',
                         borderLeft: isPlayingThis
-                          ? '2px solid #10b981'
+                          ? '3px solid #10b981'
+                          : isError
+                          ? '3px solid #ef4444'
                           : isSelected
-                          ? '2px solid var(--accent-primary)'
-                          : '2px solid transparent',
+                          ? '3px solid var(--accent-primary)'
+                          : '3px solid transparent',
                         borderBottom: '1px solid var(--border-color)',
                         cursor: 'pointer',
                         transition: 'background-color 0.1s ease'
                       }}
                       onMouseEnter={(e) => {
                         if (!isActive && !isSelected && !isPlayingThis) {
-                          e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                          e.currentTarget.style.backgroundColor = isError
+                            ? 'rgba(239, 68, 68, 0.14)'
+                            : 'var(--bg-hover)';
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!isActive && !isSelected && !isPlayingThis) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.backgroundColor = isError
+                            ? 'rgba(239, 68, 68, 0.08)'
+                            : 'transparent';
                         }
                       }}
                     >
@@ -493,7 +865,7 @@ export default function SubtitleDataTable({
                             width: '14px',
                             height: '14px',
                             cursor: 'pointer',
-                            accentColor: 'var(--accent-primary)',
+                            accentColor: isError ? '#ef4444' : 'var(--accent-primary)',
                             opacity: isSelected ? 1 : 0.6
                           }}
                         />
@@ -586,7 +958,7 @@ export default function SubtitleDataTable({
                         </div>
                       </td>
 
-                      {/* Audio Status Column (Exact DAI-Dubber Speaker Button!) */}
+                      {/* Audio Status Column */}
                       <td
                         style={{
                           padding: '8px 12px',
@@ -596,8 +968,8 @@ export default function SubtitleDataTable({
                         onClick={(e) => e.stopPropagation()}
                       >
                         {item.audio_status === 'generating' ? (
-                          <div style={{ display: 'flex', justifyContent: 'center' }}>
-                            <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-text)' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                            <Loader2 size={15} className="animate-spin" style={{ color: 'var(--accent-text)' }} />
                           </div>
                         ) : item.audio_url || item.audio_status === 'ready' ? (
                           <button
@@ -630,10 +1002,71 @@ export default function SubtitleDataTable({
                           >
                             <Volume2 size={14} />
                           </button>
-                        ) : item.audio_status === 'error' ? (
-                          <span style={{ color: '#f87171', fontSize: '11px' }}>Error</span>
+                        ) : isError ? (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                padding: '2px 5px',
+                                borderRadius: '4px',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                color: '#f87171',
+                                border: '1px solid rgba(239, 68, 68, 0.3)'
+                              }}
+                              title="Audio generation failed"
+                            >
+                              <AlertCircle size={11} /> Error
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleRetrySingle(item, e)}
+                              disabled={isGeneratingAudio}
+                              style={{
+                                padding: '3px 4px',
+                                borderRadius: '4px',
+                                border: '1px solid rgba(239, 68, 68, 0.35)',
+                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                color: '#fca5a5',
+                                cursor: isGeneratingAudio ? 'not-allowed' : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isGeneratingAudio) {
+                                  e.currentTarget.style.backgroundColor = '#ef4444';
+                                  e.currentTarget.style.color = '#fff';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isGeneratingAudio) {
+                                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                                  e.currentTarget.style.color = '#fca5a5';
+                                }
+                              }}
+                              title="Regenerate audio for this line"
+                            >
+                              <RotateCcw size={11} />
+                            </button>
+                          </div>
                         ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Pending</span>
+                          <span
+                            style={{
+                              color: 'var(--text-muted)',
+                              fontSize: '11px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}
+                            title="No audio generated yet"
+                          >
+                            <Clock size={11} /> Pending
+                          </span>
                         )}
                       </td>
                     </tr>
