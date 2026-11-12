@@ -1,89 +1,91 @@
-# 🎬 MK Subtitle & Dubbing Studio
+# MK Movie - Subtitle & Dubbing Studio
 
-An all-in-one AI-powered desktop studio for **Video Subtitling, Automatic Speech Recognition (STT), Voice Gender Detection, Instant Translation, and Multi-Speaker AI Dubbing (TTS)** on Windows.
-
-Built with **FastAPI**, **React 19**, **OpenAI Whisper**, **Edge-TTS**, and **PyWebView**.
+> **Khmer AI Subtitle, Dubbing & Video Hard-Sub Studio**  
+> An all-in-one desktop and web application for automated video transcription (OpenAI Whisper), AI translation to Khmer, pitch-matched Edge-TTS voice dubbing, vocal separation (UVR AI), custom watermark branding, and hardware-accelerated (AMD AMF / NVIDIA NVENC / CPU) multi-episode batch video rendering.
 
 ---
 
-## 🚀 Quick Overview & Installation Flow
+## 🌟 Key Features
 
-Choose the path that best matches your needs:
+- **OpenAI Whisper AI Transcription**: Automatic multi-language speech-to-text (Chinese, English, etc.) with timestamp alignment.
+- **Smart Khmer Translation**: Instant high-accuracy translation into Khmer (`km`) via Google Translate or Google Gemini AI.
+- **Natural Voice Dubbing (Edge-TTS)**: Pitch-matched natural Khmer voices (`km-KH-PisethNeural`, `km-KH-SreymomNeural`) with automatic audio time-stretching to match original video lip sync.
+- **UVR AI Vocal Separation**: Erase original speech while preserving background music & sound effects.
+- **Custom Watermark & Brand Logo**: Upload and place custom logos (PNG/JPG/WEBP) at Top-Left, Top-Right, Bottom-Left, or Bottom-Right with live preview scaling.
+- **Hardware-Accelerated Video Rendering**: Ultra-fast hard-sub burning with AMD AMF (`h264_amf`), NVIDIA NVENC (`h264_nvenc`), or CPU (`libx264`).
+- **Batch Processing & Concat Demuxer**: Process multi-episode drama series simultaneously or combine multiple episodes into a single continuous movie with stream copy in seconds.
+- **Native Desktop & Web Modes**: Launch as a lightweight native Windows desktop application (via PyWebView) or run as a local web server in your browser.
 
-```mermaid
-flowchart TD
-    Start(["Start Here"]) --> Choice{"Choose Setup Method"}
+---
 
-    %% Method A: Standalone
-    Choice -->|"Fastest (Pre-built)"| Standalone["Method A: Standalone Executable\n(No Python / Node.js required)"]
-    Standalone --> LaunchExe["Double-click MK-Subtitle-Studio.exe"]
-    LaunchExe --> AppReady(["Studio Launches & Ready to Use! 🎉"])
+## 💻 System Requirements
 
-    %% Method B: From Source
-    Choice -->|"Developer Mode"| Source["Method B: Install from Source\n(Customization & Development)"]
-    Source --> CheckReq["Verify Prerequisites:\n• Python 3.10+\n• Node.js 18+\n• FFmpeg"]
-    CheckReq --> InstallPy["1. Install Backend Dependencies:\npip install -r backend/requirements.txt"]
-    InstallPy --> InstallNode["2. Install & Build Frontend:\ncd frontend && npm install && npm run build"]
-    InstallNode --> LaunchDev["3. Launch Application:\npython desktop_app.py"]
-    LaunchDev --> AppReady
+- **Operating System**: Windows 10 / 11 (64-bit)
+- **Python**: Python 3.10 – 3.13 (64-bit)
+- **Node.js**: v18.0+ or v20.0+ with npm (for frontend building/development)
+- **FFmpeg & FFprobe**: Installed and added to system `PATH` (or placed in `tools/` folder)
+- **Hardware**:
+  - *CPU*: Dual-core 2.0 GHz+ (Intel/AMD)
+  - *RAM*: 8 GB minimum (16 GB recommended for Whisper & batch rendering)
+  - *GPU* (Optional): AMD Radeon (supports AMF) or NVIDIA GeForce (supports NVENC / CUDA) for hardware-accelerated video burning and Whisper STT.
 
-    %% Build Option
-    AppReady -.->|"Optional: Compile .exe"| BuildExe["Compile New Standalone .exe:\npython desktop_app.py --build"]
+---
+
+## 🚀 Installation Guide
+
+### Step 1: Clone or Open the Repository
+
+```bash
+git clone https://github.com/your-username/mk_subtitle.git
+cd mk_subtitle
 ```
 
----
+### Step 2: Set Up Python Environment
 
-## ⚡ Method A: Quick Launch (Pre-Built Executable)
+Create a virtual environment (recommended) or use your system Python:
 
-1. **Double-click `MK-Subtitle-Studio.exe`** directly in the project root.
-2. The native desktop app opens immediately with:
-   - Bundled **OpenAI Whisper** offline model assets.
-   - Bundled **FFmpeg / FFprobe** media engine.
-   - Zero terminal popups (silent background backend).
-
----
-
-## 🛠️ Method B: Developer Setup (Install from Source)
-
-Follow these steps if you want to run the project from source, make code modifications, or rebuild the standalone package.
-
-### 1. Prerequisites
-
-Make sure the following tools are installed on your Windows system:
-- **Python 3.10 – 3.13** ([Download Python](https://www.python.org/downloads/))  
-  *(Ensure `Add python.exe to PATH` is checked during installation)*
-- **Node.js 18+ & npm** ([Download Node.js](https://nodejs.org/))
-- **FFmpeg** (Recommended on system PATH, or placed in `tools/ffmpeg.exe`)
-
----
-
-### 2. Step-by-Step Installation
-
-#### Step 1: Clone or Open Workspace
-```bash
-cd d:\Coding\mk_subtitle
-```
-
-#### Step 2: Set Up Python Virtual Environment
-```bash
+```powershell
 # Create virtual environment
 python -m venv venv
 
-# Activate virtual environment (Windows Command Prompt)
-venv\Scripts\activate.bat
-
-# Or in PowerShell:
-venv\Scripts\Activate.ps1
+# Activate virtual environment
+# On Windows PowerShell:
+.\venv\Scripts\Activate.ps1
+# On Windows Command Prompt:
+.\venv\Scripts\activate.bat
 ```
 
-#### Step 3: Install Backend Dependencies
-```bash
-pip install --upgrade pip
-pip install -r backend/requirements.txt
+Install backend dependencies:
+
+```powershell
+pip install -r requirements.txt
 ```
 
-#### Step 4: Install & Build Frontend
+> **Note on PyTorch (GPU Support)**:  
+> If you have an NVIDIA GPU and want CUDA acceleration for Whisper:  
+> `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124`  
+> AMD or CPU users can use the standard PyTorch installed by `requirements.txt`.
+
+### Step 3: Install FFmpeg
+
+FFmpeg and FFprobe are required for audio extraction, vocal separation, and video rendering.
+
+1. Download FFmpeg from [https://www.gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/) (Release Essentials or Full build).
+2. Extract the archive and copy `ffmpeg.exe` and `ffprobe.exe` into:
+   - Either your system `PATH`, OR
+   - The project's `tools/` directory (`d:\Coding\mk_subtitle\tools\`).
+
+To verify installation, open terminal and type:
 ```bash
+ffmpeg -version
+ffprobe -version
+```
+
+### Step 4: Install Frontend Dependencies & Build
+
+Navigate to the `frontend` directory and install npm packages:
+
+```powershell
 cd frontend
 npm install
 npm run build
@@ -92,111 +94,103 @@ cd ..
 
 ---
 
-### 3. Launching the App
+## 🎬 How to Run the App
 
-Once installed, you can launch the application with any of the following:
+### Option A: One-Click Desktop Launch (Recommended)
 
-- **Option 1 (Easiest)**: Double-click **`MK-Subtitle-Studio.exe`** in the project root.
-- **Option 2 (Terminal)**:
-  ```bash
-  python desktop_app.py
-  ```
-- **Option 3 (Dev Server Mode)**:
-  ```bash
-  # In terminal 1 (Backend API):
-  python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8800 --reload
+Simply double-click:
+```text
+run.bat
+```
+This script automatically detects your environment, starts the background FastAPI backend engine, and launches the native desktop window.
 
-  # In terminal 2 (Vite HMR UI):
-  cd frontend
-  npm run dev
-  ```
+### Option B: Run via Python Terminal
+
+```powershell
+python desktop_app.py
+```
+
+### Option C: Run in Web Browser / Development Mode
+
+If you prefer developing or using your default web browser (Chrome, Edge):
+
+1. **Start the Backend API Server**:
+   ```powershell
+   uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+   ```
+2. **Start the Frontend Dev Server**:
+   ```powershell
+   cd frontend
+   npm run dev
+   ```
+3. Open your browser at [http://localhost:5173](http://localhost:5173).
 
 ---
 
-## 📦 Building Standalone Desktop Executable (`.exe`)
+## 📦 Building Standalone Executable (.exe)
 
-To compile the entire app (FastAPI + Vite frontend + Whisper assets + FFmpeg) into an independent standalone folder distribution:
+You can package the entire application into a standalone Windows `.exe` that does not require Python or Node.js on the target machine:
 
-```bash
+```powershell
+# Run the build batch script
+build_desktop_exe.bat
+
+# OR run via python
 python desktop_app.py --build
 ```
 
-The output will be created at:
+The resulting standalone application will be generated in:
 ```text
 dist\MK-Subtitle-Studio\MK-Subtitle-Studio.exe
 ```
-This executable is fully portable and can be run without Python or Node.js installed on the host machine.
 
 ---
 
-## 🌟 Studio Features & Workflow Flowchart
-
-```mermaid
-graph LR
-    A["1. Upload Video\n(MP4, MKV, MOV, etc.)"] --> B["2. AI Whisper STT\n(Voice-to-Text)"]
-    B --> C["3. Gender Detection\n(Male vs Female F0 pitch)"]
-    C --> D["4. Google Translate\n(Khmer, English, etc.)"]
-    D --> E["5. Edge-TTS Dubbing\n(Auto Speed Time-Stretch)"]
-    E --> F["6. Timeline Synchronizer\n(Match waveform & video)"]
-    F --> G["7. Export Video\n(Burn Subtitles / MP4 / SRT)"]
-```
-
-| Feature | Description |
-| :--- | :--- |
-| **🎙️ Whisper Speech-to-Text** | Offline speech-to-text with auto word-level / sentence timestamp extraction. |
-| **👥 Voice Gender Classification** | Analyzes fundamental vocal pitch (F0) to assign lines to **Male** or **Female** speakers automatically. |
-| **🌐 Free Instant Translation** | Translate subtitles instantly across 50+ languages (Khmer, English, Chinese, Vietnamese, Thai, Japanese, etc.) with rate-limiting safety. |
-| **🗣️ Multi-Voice Edge-TTS** | High quality neural TTS dubbing with automatic audio time-stretching so speech matches the duration of each subtitle line. |
-| **⏱️ Interactive Timeline** | Precision subtitle synchronization, waveform view, drag-to-resize, and split/merge lines. |
-| **🎞️ Hardsub Video Rendering** | Fast FFmpeg video encoding with customizable subtitle styling (font size, colors, outlines, bottom/top placement). |
-| **📁 Universal Export** | Export to `.srt`, `.vtt`, `.ass`, `.txt`, standalone dubbed `.mp3`, or hardsubbed `.mp4`. |
-| **⏳ Long-Form Video Support** | Efficient streaming and chunking handles short clips and long videos (1 hour+) without memory leaks. |
-
----
-
-## 📂 Project Structure
+## 📁 Project Directory Structure
 
 ```text
 mk_subtitle/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes/          # REST API endpoints (transcription, translation, dubbing, export)
-│   │   ├── models/              # Pydantic data schemas
-│   │   ├── services/            # Core AI engines (whisper_stt, edge_tts, video_generator)
-│   │   ├── config.py            # Global paths, FFmpeg discovery, directory setups
-│   │   └── main.py              # FastAPI application entry
-│   └── requirements.txt         # Python dependencies
+│   │   ├── main.py               # FastAPI application & REST endpoints
+│   │   ├── config.py             # System paths, storage & FFmpeg config
+│   │   ├── models/               # Pydantic schemas (subtitles, requests)
+│   │   └── services/
+│   │       ├── whisper_stt.py    # OpenAI Whisper speech-to-text
+│   │       ├── translator.py     # Gemini & Google Translate services
+│   │       ├── tts_engine.py     # Microsoft Edge-TTS Khmer synthesis
+│   │       ├── vocal_separator.py# UVR vocal & BGM isolation
+│   │       └── ffmpeg_runner.py  # Hard-sub burning, AMF encoder & concat
 ├── frontend/
 │   ├── src/
-│   │   ├── components/          # VideoPlayer, TimelineEditor, SubtitleDataTable, ExportModal
-│   │   ├── services/api.js      # Backend API connector
-│   │   ├── App.jsx              # Main UI layout & state
-│   │   └── index.css            # Tailwind CSS styling
-│   ├── package.json             # Frontend dependencies
-│   └── vite.config.js           # Vite bundling configuration
-├── tools/                       # Bundled ffmpeg.exe & ffprobe.exe
-├── dist/MK-Subtitle-Studio/     # Standalone portable Windows executable distribution
-├── desktop_app.py               # Desktop PyWebView runner & PyInstaller build script
-├── MK-Subtitle-Studio.exe       # Standalone Windows one-click desktop application
-└── README.md                    # Project documentation
+│   │   ├── components/           # UI components (Timeline, Queue, ExportModal)
+│   │   ├── utils/                # Time formatting & helpers
+│   │   ├── App.jsx               # Main React Studio layout & state
+│   │   └── main.jsx              # React DOM entry
+│   └── package.json              # Vite & React dependencies
+├── storage/                      # Audio cache, uploads & rendered exports
+├── assets/                       # Branding logos & app icons
+├── desktop_app.py                # Native PyWebView launcher & build script
+├── run.bat                       # Quick desktop launcher
+├── build_desktop_exe.bat         # PyInstaller one-click builder
+├── requirements.txt              # Python dependencies
+└── README.md                     # Documentation
 ```
 
 ---
 
-## ❓ Frequently Asked Questions & Troubleshooting
+## 🛠️ Troubleshooting
 
-### 1. `mel_filters.npz` or Whisper token error
-- **Cause**: PyInstaller missed Whisper model asset files in standalone mode.
-- **Solution**: The app includes automatic fallback logic in `backend/app/services/whisper_stt.py` using `librosa.filters.mel`. Whisper assets (`mel_filters.npz`, `multilingual.tiktoken`) are automatically placed in `dist/MK-Subtitle-Studio/_internal/whisper/assets/`.
-
-### 2. `FFmpeg not found`
-- **Solution**: The studio automatically looks for `tools/ffmpeg.exe` inside the app folder, on the system `PATH`, and in common installation directories. Standalone builds bundle FFmpeg into `dist/MK-Subtitle-Studio/tools/`.
-
-### 3. Port `8800` already in use
-- **Solution**: The backend automatically searches for the next open port (8801, 8802...) dynamically on startup.
+- **Audio/Video Not Found on Transcribe**:
+  - Make sure the video path or filename is valid. The app automatically searches your local video folders and uploaded files.
+- **FFmpeg Not Found**:
+  - Ensure `ffmpeg.exe` and `ffprobe.exe` are in your Windows `PATH` environment variable or placed in the `tools/` folder.
+- **Port Conflict (Port 8000 / 8800 in use)**:
+  - `desktop_app.py` automatically detects occupied ports and binds to the next available port.
 
 ---
 
 ## 📄 License
-This project is for personal, educational, and creative content creation workflows.
+
+This project is for personal, educational, and creative content creation. All third-party libraries (OpenAI Whisper, Microsoft Edge-TTS, FFmpeg) belong to their respective copyright holders.
 
