@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye } from 'lucide-react';
+import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, RotateCcw, Image as ImageIcon } from 'lucide-react';
 
 export default function ExportModal({
   isOpen,
@@ -172,7 +172,43 @@ export default function ExportModal({
   const [duckingVol, setDuckingVol] = useState(25);
   const [useAmfGpu, setUseAmfGpu] = useState(true);
   const [addLogoWatermark, setAddLogoWatermark] = useState(false);
+  const [watermarkSource, setWatermarkSource] = useState('default'); // 'default' | 'custom'
+  const [customLogoUrl, setCustomLogoUrl] = useState(null);
+  const [customLogoFile, setCustomLogoFile] = useState(null);
+  const [customLogoPath, setCustomLogoPath] = useState(null);
+  const [watermarkPosition, setWatermarkPosition] = useState('top_right'); // 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left'
+  const [watermarkSize, setWatermarkSize] = useState(90); // 40 - 220 px
+  const [watermarkOpacity, setWatermarkOpacity] = useState(85); // 20 - 100%
+  const [watermarkMargin, setWatermarkMargin] = useState(20); // 10 - 60 px
   const [autoPurgeCache, setAutoPurgeCache] = useState(true);
+  const logoFileInputRef = React.useRef(null);
+
+  const handleCustomLogoSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCustomLogoFile(file);
+    const localPreview = URL.createObjectURL(file);
+    setCustomLogoUrl(localPreview);
+    setWatermarkSource('custom');
+
+    // Pre-upload to backend so path is ready immediately
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/upload/logo', {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCustomLogoPath(data.filename);
+      }
+    } catch (err) {
+      console.warn('Could not pre-upload custom logo:', err);
+    }
+  };
+
+  const activeLogoSrc = watermarkSource === 'custom' && customLogoUrl ? customLogoUrl : '/logo.png';
 
   const handleDubbingToggle = (e) => {
     const checked = e.target.checked;
@@ -754,25 +790,43 @@ export default function ExportModal({
                       <span>LIVE PREVIEW</span>
                     </div>
 
-                    {/* Optional Watermark Preview */}
+                    {/* Watermark Live Preview with custom position, size, opacity */}
                     {addLogoWatermark && (
                       <div
                         style={{
                           position: 'absolute',
-                          top: '6px',
-                          right: '8px',
+                          ...(watermarkPosition === 'top_left'
+                            ? { top: `${Math.round(watermarkMargin * 0.25)}px`, left: `${Math.round(watermarkMargin * 0.25)}px` }
+                            : watermarkPosition === 'bottom_left'
+                            ? { bottom: `${Math.round(watermarkMargin * 0.25)}px`, left: `${Math.round(watermarkMargin * 0.25)}px` }
+                            : watermarkPosition === 'bottom_right'
+                            ? { bottom: `${Math.round(watermarkMargin * 0.25)}px`, right: `${Math.round(watermarkMargin * 0.25)}px` }
+                            : { top: `${Math.round(watermarkMargin * 0.25)}px`, right: `${Math.round(watermarkMargin * 0.25)}px` }),
+                          opacity: watermarkOpacity / 100,
+                          zIndex: 2,
+                          pointerEvents: 'none',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '3px',
-                          backgroundColor: 'rgba(0,0,0,0.5)',
-                          padding: '2px 5px',
-                          borderRadius: '4px',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          zIndex: 2
+                          backgroundColor: watermarkSource === 'default' ? 'rgba(0,0,0,0.45)' : 'transparent',
+                          padding: watermarkSource === 'default' ? '2px 4px' : '0',
+                          borderRadius: '4px'
                         }}
                       >
-                        <img src="/logo.png" alt="MK" style={{ width: '11px', height: '11px', borderRadius: '50%' }} />
-                        <span style={{ fontSize: '8px', color: '#ef4444', fontWeight: 700 }}>MK MOVIE</span>
+                        <img
+                          src={activeLogoSrc}
+                          alt="Watermark"
+                          style={{
+                            width: `${Math.max(12, Math.round(watermarkSize * 0.22))}px`,
+                            height: 'auto',
+                            maxHeight: `${Math.max(12, Math.round(watermarkSize * 0.22))}px`,
+                            objectFit: 'contain',
+                            borderRadius: watermarkSource === 'default' ? '50%' : '2px'
+                          }}
+                        />
+                        {watermarkSource === 'default' && (
+                          <span style={{ fontSize: '7px', color: '#ef4444', fontWeight: 700 }}>MK</span>
+                        )}
                       </div>
                     )}
 
@@ -1276,18 +1330,210 @@ export default function ExportModal({
                     </div>
                   )}
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={addLogoWatermark}
-                      onChange={(e) => setAddLogoWatermark(e.target.checked)}
-                      style={{ accentColor: 'var(--accent-primary)' }}
-                    />
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <img src="/logo.png" alt="MK" style={{ width: '15px', height: '15px', borderRadius: '50%' }} />
-                      Add MK Movie watermark logo (Top-Right corner)
-                    </span>
-                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={addLogoWatermark}
+                        onChange={(e) => setAddLogoWatermark(e.target.checked)}
+                        style={{ accentColor: 'var(--accent-primary)' }}
+                      />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: addLogoWatermark ? 600 : 400 }}>
+                        <img src={activeLogoSrc} alt="Logo" style={{ width: '15px', height: '15px', borderRadius: watermarkSource === 'default' ? '50%' : '3px', objectFit: 'contain' }} />
+                        Add Watermark Logo ({watermarkSource === 'custom' ? 'Custom Logo' : 'MK Movie'})
+                      </span>
+                    </label>
+
+                    {/* Expandable Custom Watermark Controls */}
+                    {addLogoWatermark && (
+                      <div
+                        style={{
+                          backgroundColor: 'var(--bg-base)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px'
+                        }}
+                      >
+                        {/* 1. Logo Image Source Selector */}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>WATERMARK LOGO IMAGE:</span>
+                            {watermarkSource === 'custom' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setWatermarkSource('default');
+                                  setCustomLogoFile(null);
+                                  setCustomLogoUrl(null);
+                                  setCustomLogoPath(null);
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#f87171',
+                                  fontSize: '11px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}
+                              >
+                                <RotateCcw size={11} /> Reset to Default
+                              </button>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setWatermarkSource('default')}
+                              style={{
+                                padding: '8px',
+                                borderRadius: '6px',
+                                border: `1px solid ${watermarkSource === 'default' ? '#ef4444' : 'var(--border-color)'}`,
+                                backgroundColor: watermarkSource === 'default' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-tertiary)',
+                                color: watermarkSource === 'default' ? '#ffffff' : 'var(--text-muted)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <img src="/logo.png" alt="MK" style={{ width: '15px', height: '15px', borderRadius: '50%' }} />
+                              <span>Default MK Logo</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => logoFileInputRef.current && logoFileInputRef.current.click()}
+                              style={{
+                                padding: '8px',
+                                borderRadius: '6px',
+                                border: `1px solid ${watermarkSource === 'custom' ? '#3b82f6' : 'var(--border-color)'}`,
+                                backgroundColor: watermarkSource === 'custom' ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-tertiary)',
+                                color: watermarkSource === 'custom' ? '#60a5fa' : 'var(--text-muted)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {customLogoUrl ? (
+                                <img src={customLogoUrl} alt="Custom" style={{ width: '15px', height: '15px', borderRadius: '2px', objectFit: 'contain' }} />
+                              ) : (
+                                <Upload size={13} />
+                              )}
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {customLogoFile ? customLogoFile.name : 'Upload Custom Logo'}
+                              </span>
+                            </button>
+
+                            <input
+                              type="file"
+                              ref={logoFileInputRef}
+                              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                              style={{ display: 'none' }}
+                              onChange={handleCustomLogoSelect}
+                            />
+                          </div>
+                        </div>
+
+                        {/* 2. Position: 4 Corners */}
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '5px' }}>
+                            CORNER POSITION:
+                          </span>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                            {[
+                              { id: 'top_left', label: 'Top-Left ↖' },
+                              { id: 'top_right', label: 'Top-Right ↗' },
+                              { id: 'bottom_left', label: 'Bottom-Left ↙' },
+                              { id: 'bottom_right', label: 'Bottom-Right ↘' }
+                            ].map((pos) => (
+                              <button
+                                key={pos.id}
+                                type="button"
+                                onClick={() => setWatermarkPosition(pos.id)}
+                                style={{
+                                  padding: '6px 4px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${watermarkPosition === pos.id ? 'var(--accent-primary)' : 'var(--border-color)'}`,
+                                  backgroundColor: watermarkPosition === pos.id ? 'rgba(239, 68, 68, 0.18)' : 'var(--bg-tertiary)',
+                                  color: watermarkPosition === pos.id ? '#ffffff' : 'var(--text-muted)',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  textAlign: 'center'
+                                }}
+                              >
+                                {pos.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 3. Sliders: Size, Opacity, Margin */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Size:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{watermarkSize}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="40"
+                              max="220"
+                              step="5"
+                              value={watermarkSize}
+                              onChange={(e) => setWatermarkSize(parseInt(e.target.value))}
+                              style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                            />
+                          </div>
+
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Opacity:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{watermarkOpacity}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="20"
+                              max="100"
+                              step="5"
+                              value={watermarkOpacity}
+                              onChange={(e) => setWatermarkOpacity(parseInt(e.target.value))}
+                              style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                            />
+                          </div>
+
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Margin:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{watermarkMargin}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="60"
+                              step="2"
+                              value={watermarkMargin}
+                              onChange={(e) => setWatermarkMargin(parseInt(e.target.value))}
+                              style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
                     <input
@@ -1318,6 +1564,12 @@ export default function ExportModal({
                         include_dubbing: includeDubbing,
                         mute_original_audio: includeDubbing ? muteOriginalAudio : false,
                         add_logo_watermark: addLogoWatermark,
+                        watermark_custom_path: (watermarkSource === 'custom' && customLogoPath) ? customLogoPath : null,
+                        watermark_custom_file: (watermarkSource === 'custom' && customLogoFile) ? customLogoFile : null,
+                        watermark_position: watermarkPosition,
+                        watermark_size: watermarkSize,
+                        watermark_opacity: watermarkOpacity / 100,
+                        watermark_margin: watermarkMargin,
                         background_ducking_volume: duckingVol / 100,
                         use_amf_gpu: useAmfGpu,
                         combine_into_one: renderScope === 'batch' && batchOutputMode === 'combine',

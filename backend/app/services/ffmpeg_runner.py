@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import uuid
 import subprocess
@@ -11,6 +12,12 @@ from ..models.subtitle import VideoBurnRequest
 from .subtitle_parser import export_ass
 from .audio_mixer import build_dubbed_audio_track
 from .whisper_stt import resolve_media_file
+
+def sanitize_filename(name: str) -> str:
+    """Sanitizes filename for safe storage across Windows and Linux filesystems"""
+    cleaned = re.sub(r'[<>:"/\\|?*]', '_', name)
+    cleaned = re.sub(r'[\x00-\x1f]', '', cleaned)
+    return cleaned.strip('. ') or "video"
 
 def probe_video(file_path: Path) -> Dict[str, Any]:
     """Extracts duration, dimensions, fps, audio channels from video file"""
@@ -142,7 +149,7 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
 
     # Derive clean output filename preserving original episode name
     source_name = req.custom_output_filename or req.video_filename
-    original_stem = Path(source_name).stem
+    original_stem = sanitize_filename(Path(source_name).stem)
     if original_stem.startswith("mk_sub_"):
         original_stem = original_stem.replace("mk_sub_", "")
 
@@ -178,8 +185,24 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
                 break
 
     # 4. Check Watermark Logo
-    logo_path = BASE_DIR / "assets" / "logo.png"
-    has_watermark = req.add_logo_watermark and logo_path.exists()
+    logo_path = None
+    if req.add_logo_watermark:
+        if getattr(req, "watermark_custom_path", None):
+            raw_c = Path(str(req.watermark_custom_path).replace("/api/video/", "").replace("/api/assets/", "").split("?")[0])
+            for d in [UPLOADS_DIR, BASE_DIR / "assets", BASE_DIR]:
+                p = d / raw_c.name
+                if p.exists() and p.is_file():
+                    logo_path = p
+                    break
+            if not logo_path and raw_c.exists() and raw_c.is_file():
+                logo_path = raw_c
+
+        if not logo_path:
+            default_p = BASE_DIR / "assets" / "logo.png"
+            if default_p.exists():
+                logo_path = default_p
+
+    has_watermark = (logo_path is not None and logo_path.exists())
 
     # Build input list and track stream indexes accurately
     cmd_inputs = ["-i", str(video_path)]
@@ -216,8 +239,30 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
         current_v = f"[{video_in}:v]"
 
     if logo_in is not None:
-        filter_chains.append(f"[{logo_in}:v]scale=90:-1[logo]")
-        filter_chains.append(f"{current_v}[logo]overlay=W-w-20:20[vout]")
+        wm_size = max(30, min(getattr(req, "watermark_size", 90) or 90, 500))
+        wm_opacity = max(0.1, min(getattr(req, "watermark_opacity", 0.85) or 0.85, 1.0))
+        wm_margin = max(0, min(getattr(req, "watermark_margin", 20) or 20, 200))
+        wm_pos = getattr(req, "watermark_position", "top_right") or "top_right"
+
+        # Map position to FFmpeg overlay coordinate formula
+        if wm_pos == "top_left":
+            overlay_coord = f"{wm_margin}:{wm_margin}"
+        elif wm_pos == "bottom_right":
+            overlay_coord = f"W-w-{wm_margin}:H-h-{wm_margin}"
+        elif wm_pos == "bottom_left":
+            overlay_coord = f"{wm_margin}:H-h-{wm_margin}"
+        elif wm_pos == "center":
+            overlay_coord = f"(W-w)/2:(H-h)/2"
+        else:  # top_right (default)
+            overlay_coord = f"W-w-{wm_margin}:{wm_margin}"
+
+        # Scale and adjust opacity using colorchannelmixer
+        if wm_opacity < 0.99:
+            filter_chains.append(f"[{logo_in}:v]scale={wm_size}:-1,format=rgba,colorchannelmixer=aa={wm_opacity:.2f}[logo]")
+        else:
+            filter_chains.append(f"[{logo_in}:v]scale={wm_size}:-1[logo]")
+
+        filter_chains.append(f"{current_v}[logo]overlay={overlay_coord}[vout]")
     else:
         filter_chains.append(f"{current_v}null[vout]")
 
@@ -456,11 +501,11 @@ def concat_videos(
 
     # Determine output filename
     if custom_output_filename:
-        out_name = Path(custom_output_filename).name
+        out_name = sanitize_filename(Path(custom_output_filename).name)
         if not out_name.lower().endswith(".mp4"):
             out_name = f"{out_name}.mp4"
     else:
-        first_stem = resolved_paths[0].stem.replace("_dubbed", "").replace("mk_sub_", "")
+        first_stem = sanitize_filename(resolved_paths[0].stem.replace("_dubbed", "").replace("mk_sub_", ""))
         out_name = f"{first_stem}_combined_full_movie.mp4"
 
     export_path = EXPORTS_DIR / out_name

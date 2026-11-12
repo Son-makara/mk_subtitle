@@ -91,6 +91,11 @@ class VideoBurnRequest(BaseModel):
     bgm_volume: float = 0.3
     use_amf_gpu: bool = True
     add_logo_watermark: bool = False
+    watermark_custom_path: Optional[str] = None
+    watermark_position: str = "top_right"  # "top_right", "top_left", "bottom_right", "bottom_left", "center"
+    watermark_size: int = 90
+    watermark_opacity: float = 0.85
+    watermark_margin: int = 20
     job_id: Optional[str] = None
     custom_output_filename: Optional[str] = None
 

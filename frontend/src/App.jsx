@@ -293,6 +293,7 @@ export default function App() {
       return {
         id: `vid_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
         name: file.name,
+        filePath: file.path || '',
         folderName: folderName,
         file: file,
         url: null,
@@ -315,6 +316,9 @@ export default function App() {
         setStatusMessage(`Uploading (${i + 1}/${newItems.length}): ${item.name}...`);
         const formData = new FormData();
         formData.append('file', item.file);
+        if (item.filePath) {
+          formData.append('local_path', item.filePath);
+        }
 
         const res = await fetch('/api/upload/video', {
           method: 'POST',
@@ -335,6 +339,7 @@ export default function App() {
                 ...v,
                 url: data.url,
                 serverFilename: data.filename,
+                filePath: item.filePath || '',
                 name: data.name || data.filename,
                 folderName: v.folderName || item.folderName || '',
                 duration: duration,
@@ -521,11 +526,12 @@ export default function App() {
             )
           );
 
+          const videoTarget = currentItem.filePath || currentItem.serverFilename || currentItem.name;
           const sttRes = await fetch('/api/transcribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              video_filename: currentItem.serverFilename || currentItem.name,
+              video_filename: videoTarget,
               model_size: 'base',
               language: null,
               auto_translate_to_khmer: true
@@ -685,12 +691,31 @@ export default function App() {
       include_dubbing: isCustomObject?.include_dubbing !== undefined ? isCustomObject.include_dubbing : true,
       mute_original_audio: isCustomObject?.mute_original_audio !== undefined ? isCustomObject.mute_original_audio : true,
       add_logo_watermark: Boolean(isCustomObject?.add_logo_watermark),
+      watermark_custom_path: isCustomObject?.watermark_custom_path || null,
+      watermark_position: isCustomObject?.watermark_position || 'top_right',
+      watermark_size: isCustomObject?.watermark_size || 90,
+      watermark_opacity: isCustomObject?.watermark_opacity !== undefined ? isCustomObject.watermark_opacity : 0.85,
+      watermark_margin: isCustomObject?.watermark_margin !== undefined ? isCustomObject.watermark_margin : 20,
       background_ducking_volume: isCustomObject?.background_ducking_volume !== undefined ? isCustomObject.background_ducking_volume : 0.25,
       use_amf_gpu: isCustomObject?.use_amf_gpu !== undefined ? isCustomObject.use_amf_gpu : true,
       combine_into_one: Boolean(isCustomObject?.combine_into_one),
       combined_filename: isCustomObject?.combined_filename || null,
       batch_output_mode: isCustomObject?.batch_output_mode || 'separate'
     };
+
+    if (renderOpts.add_logo_watermark && isCustomObject?.watermark_custom_file && !renderOpts.watermark_custom_path) {
+      try {
+        const formData = new FormData();
+        formData.append('file', isCustomObject.watermark_custom_file);
+        const lRes = await fetch('/api/upload/logo', { method: 'POST', body: formData });
+        if (lRes.ok) {
+          const lData = await lRes.json();
+          renderOpts.watermark_custom_path = lData.filename;
+        }
+      } catch (err) {
+        console.warn('Could not upload watermark logo for batch render:', err);
+      }
+    }
 
     let successfullyRendered = 0;
     const renderedOutputFilenames = [];
@@ -718,11 +743,12 @@ export default function App() {
             )
           );
 
+          const videoTarget = currentItem.filePath || currentItem.serverFilename || currentItem.name;
           const sttRes = await fetch('/api/transcribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              video_filename: currentItem.serverFilename || currentItem.name,
+              video_filename: videoTarget,
               model_size: 'base',
               language: null,
               auto_translate_to_khmer: true
@@ -1283,6 +1309,26 @@ export default function App() {
 
   // Start Whisper speech-to-text
   const handleStartWhisper = async (params) => {
+    // 1. Determine active video item from queue or active state
+    const activeItem = videoQueue.find((v) => v.id === activeVideoId);
+    if (activeItem && activeItem.status === 'uploading') {
+      alert('The selected video is still preparing/uploading. Please wait a moment before transcribing.');
+      return;
+    }
+
+    const targetVideo =
+      activeItem?.filePath ||
+      activeItem?.serverFilename ||
+      videoServerFilename ||
+      activeItem?.name ||
+      videoFilename ||
+      '';
+
+    if (!targetVideo) {
+      alert('No video is currently loaded to transcribe. Please select or add a video first.');
+      return;
+    }
+
     setIsTranscribing(true);
     setStatusMessage('Transcribing video speech with Whisper AI...');
     try {
@@ -1290,7 +1336,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          video_filename: videoServerFilename || videoFilename || '',
+          video_filename: targetVideo,
           ...params
         })
       });
@@ -1302,16 +1348,23 @@ export default function App() {
 
       const data = await res.json();
       if (data.items && data.items.length > 0) {
-        setSubtitles(
-          data.items.map((it) => ({
-            ...it,
-            gender: it.gender || 'Female',
-            audio_status: 'idle',
-            speed: 1.0,
-            translated_text: it.translated_text || null
-          }))
-        );
-        setSelectedIds(data.items.map((i) => i.id));
+        const formattedItems = data.items.map((it) => ({
+          ...it,
+          gender: it.gender || 'Female',
+          audio_status: 'idle',
+          speed: 1.0,
+          translated_text: it.translated_text || null
+        }));
+        setSubtitles(formattedItems);
+        setSelectedIds(formattedItems.map((i) => i.id));
+        // Also update subtitles in videoQueue for active item
+        if (activeVideoId) {
+          setVideoQueue((prev) =>
+            prev.map((v) =>
+              v.id === activeVideoId ? { ...v, subtitles: formattedItems, status: 'completed' } : v
+            )
+          );
+        }
         setAiModalOpen(false);
       } else {
         alert('Whisper finished transcription, but no spoken dialogue was detected.');
@@ -1693,6 +1746,21 @@ export default function App() {
       // Safeguard: if dubbing is explicitly turned off by the user, never mute original video audio
       if (!smartOptions.include_dubbing) {
         smartOptions.mute_original_audio = false;
+      }
+
+      // Pre-upload custom logo if selected as raw file and not yet uploaded
+      if (smartOptions.add_logo_watermark && smartOptions.watermark_custom_file && !smartOptions.watermark_custom_path) {
+        try {
+          const formData = new FormData();
+          formData.append('file', smartOptions.watermark_custom_file);
+          const lRes = await fetch('/api/upload/logo', { method: 'POST', body: formData });
+          if (lRes.ok) {
+            const lData = await lRes.json();
+            smartOptions.watermark_custom_path = lData.filename;
+          }
+        } catch (err) {
+          console.warn('Could not upload watermark logo:', err);
+        }
       }
 
       const res = await fetch('/api/render/burn', {

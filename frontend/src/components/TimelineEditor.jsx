@@ -482,7 +482,8 @@ export default function TimelineEditor({
           {/* Transcribe Button */}
           <button
             onClick={onTranscribeClick}
-            disabled={isTranscribing}
+            disabled={isTranscribing || !hasVideoLoaded}
+            title={!hasVideoLoaded ? 'Please load a video first' : 'Transcribe speech with Whisper AI'}
             style={{
               padding: '6px 14px',
               borderRadius: '6px',
@@ -491,12 +492,12 @@ export default function TimelineEditor({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              cursor: isTranscribing ? 'not-allowed' : 'pointer',
-              opacity: isTranscribing ? 0.75 : 1,
+              cursor: (isTranscribing || !hasVideoLoaded) ? 'not-allowed' : 'pointer',
+              opacity: (isTranscribing || !hasVideoLoaded) ? 0.6 : 1,
               border: 'none',
-              backgroundColor: isTranscribing ? '#047857' : '#059669',
+              backgroundColor: isTranscribing ? '#047857' : !hasVideoLoaded ? '#374151' : '#059669',
               color: '#fff',
-              boxShadow: '0 2px 6px rgba(5, 150, 105, 0.3)',
+              boxShadow: !hasVideoLoaded ? 'none' : '0 2px 6px rgba(5, 150, 105, 0.3)',
               transition: 'all 0.15s ease'
             }}
           >

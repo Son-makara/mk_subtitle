@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import uuid
+import re
 import asyncio
 import subprocess
 import urllib.parse
@@ -80,14 +81,27 @@ async def get_system_status():
 # ==================== Video & Audio Endpoints ====================
 
 @app.post("/api/upload/video")
-async def upload_video(file: UploadFile = File(...)):
-    ext = Path(file.filename or "video.mp4").suffix
-    unique_name = f"vid_{uuid.uuid4().hex[:8]}{ext}"
+async def upload_video(file: UploadFile = File(...), local_path: Optional[str] = Form(None)):
+    from .services.whisper_stt import register_media_path
+    
+    # If a valid local disk path is provided (e.g. desktop PyWebView file), register it
+    if local_path:
+        local_p = Path(local_path)
+        if local_p.is_file() and local_p.exists():
+            register_media_path(str(local_p))
+
+    raw_filename = file.filename or "video.mp4"
+    ext = Path(raw_filename).suffix
+    raw_stem = Path(raw_filename).stem
+    # Sanitize stem for safe filename embedding
+    safe_stem = re.sub(r'[^a-zA-Z0-9_\u4e00-\u9fff\u1780-\u17ff-]', '_', raw_stem)[:40]
+    unique_name = f"vid_{uuid.uuid4().hex[:6]}_{safe_stem}{ext}"
     dest_path = UPLOADS_DIR / unique_name
 
     with open(dest_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    register_media_path(str(dest_path))
     metadata = await asyncio.to_thread(probe_video, dest_path)
     return {
         "filename": unique_name,
@@ -111,12 +125,45 @@ async def upload_bgm(file: UploadFile = File(...)):
         "name": file.filename
     }
 
+@app.post("/api/upload/logo")
+async def upload_logo(file: UploadFile = File(...)):
+    ext = Path(file.filename or "logo.png").suffix.lower()
+    if ext not in [".png", ".jpg", ".jpeg", ".webp", ".svg"]:
+        ext = ".png"
+    unique_name = f"custom_logo_{uuid.uuid4().hex[:8]}{ext}"
+    dest_path = UPLOADS_DIR / unique_name
+
+    with open(dest_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {
+        "status": "success",
+        "filename": unique_name,
+        "url": f"/api/assets/{unique_name}",
+        "name": file.filename
+    }
+
+@app.get("/api/assets/{filename}")
+async def serve_asset(filename: str):
+    from .config import BASE_DIR
+    for d in [BASE_DIR / "assets", UPLOADS_DIR]:
+        path = d / filename
+        if path.exists() and path.is_file():
+            ext = path.suffix.lower()
+            media = "image/png" if ext == ".png" else "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/webp" if ext == ".webp" else "application/octet-stream"
+            return FileResponse(path, media_type=media)
+    raise HTTPException(status_code=404, detail="Asset not found")
+
 @app.get("/api/video/{filename}")
 async def serve_video(filename: str):
     path = UPLOADS_DIR / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail="Video not found")
-    return FileResponse(path, media_type="video/mp4")
+    ext = path.suffix.lower()
+    media_type = "video/mp4"
+    if ext in [".png", ".jpg", ".jpeg", ".webp"]:
+        media_type = f"image/{ext.replace('.', '')}"
+    return FileResponse(path, media_type=media_type)
 
 @app.get("/api/audio/{filename}")
 async def serve_audio(filename: str):

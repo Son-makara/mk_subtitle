@@ -13,36 +13,71 @@ from ..models.subtitle import SubtitleItem
 # Lazy-loaded whisper model cache
 _WHISPER_MODELS = {}
 
+# Media directory search cache to track folders where user videos are located
+KNOWN_MEDIA_DIRS = set()
+
+def register_media_path(path_str: Optional[str]):
+    if not path_str:
+        return
+    try:
+        p = Path(path_str)
+        if p.is_file():
+            KNOWN_MEDIA_DIRS.add(p.parent)
+        elif p.is_dir():
+            KNOWN_MEDIA_DIRS.add(p)
+    except Exception:
+        pass
+
 def resolve_media_file(filename: Optional[str] = None) -> Path:
     """
     Robustly resolves a video or audio file by:
-    1. Exact filename in UPLOADS_DIR or AUDIO_CACHE_DIR
-    2. Stripping URL prefixes (/api/video/, /api/audio/)
-    3. Stem / case-insensitive match
-    4. Fallback to the single uploaded video or most recently uploaded media
+    1. Direct file path on disk (absolute or relative)
+    2. Exact filename or stem in UPLOADS_DIR or AUDIO_CACHE_DIR
+    3. Stripping URL prefixes (/api/video/, /api/audio/)
+    4. Substring / fuzzy stem match in uploads (e.g. vid_<uuid>_<original_stem>.mp4)
+    5. Searching in known media directories on the host disk
+    6. Fallback to single or most recent video in uploads
     """
     if filename:
         candidate = Path(filename)
         if candidate.is_file() and candidate.exists():
+            register_media_path(str(candidate))
             return candidate
 
         clean_name = Path(str(filename).replace("/api/video/", "").replace("/api/audio/", "").split("?")[0]).name
+        clean_stem = Path(clean_name).stem.lower()
 
+        # 1. Exact match in standard storage dirs
         for d in [UPLOADS_DIR, AUDIO_CACHE_DIR]:
             p = d / clean_name
-            if p.exists():
+            if p.exists() and p.is_file():
                 return p
 
-        # Check stem match
-        target_stem = Path(clean_name).stem.lower()
+        # 2. Check stem / substring match in storage dirs (supports vid_<uuid>_<stem>.ext)
         for directory in [UPLOADS_DIR, AUDIO_CACHE_DIR]:
             for f in directory.glob("*"):
                 if f.is_file() and not f.name.startswith(".gitkeep"):
-                    if f.name.lower() == clean_name.lower() or f.stem.lower() == target_stem:
+                    f_name_lower = f.name.lower()
+                    f_stem_lower = f.stem.lower()
+                    if f_name_lower == clean_name.lower() or f_stem_lower == clean_stem:
+                        return f
+                    if clean_stem and (clean_stem in f_stem_lower or f_stem_lower in clean_stem):
                         return f
 
-    # Fallback to single or most recent file in uploads
-    all_uploads = [f for f in UPLOADS_DIR.glob("*") if f.is_file() and not f.name.startswith(".gitkeep")]
+        # 3. Check known external media directories on disk
+        for d in list(KNOWN_MEDIA_DIRS):
+            if d.exists() and d.is_dir():
+                p = d / clean_name
+                if p.exists() and p.is_file():
+                    return p
+                # Check stem match in known media dirs
+                for f in d.glob("*"):
+                    if f.is_file() and (f.name.lower() == clean_name.lower() or f.stem.lower() == clean_stem):
+                        return f
+
+    # Fallback to single or most recent video in uploads
+    valid_video_exts = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".m4v", ".ts"}
+    all_uploads = [f for f in UPLOADS_DIR.glob("*") if f.is_file() and not f.name.startswith(".gitkeep") and f.suffix.lower() in valid_video_exts]
     if all_uploads:
         all_uploads.sort(key=lambda x: x.stat().st_mtime, reverse=True)
         return all_uploads[0]
