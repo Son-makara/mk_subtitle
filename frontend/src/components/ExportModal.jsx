@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, RotateCcw, Image as ImageIcon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, Image as ImageIcon, Layers, ArrowUp, ArrowDown, Plus, Film, Loader2, FolderOpen, Play, CheckCircle2, Shield, EyeOff, Music, Sparkles } from 'lucide-react';
 
 export default function ExportModal({
   isOpen,
@@ -24,6 +24,196 @@ export default function ExportModal({
   const [renderScope, setRenderScope] = useState(() => (queue && queue.length > 1 ? 'batch' : 'single'));
   const [batchOutputMode, setBatchOutputMode] = useState('separate'); // 'separate' or 'combine'
   const [combinedTitle, setCombinedTitle] = useState('');
+
+  const [activeTab, setActiveTab] = useState(type || 'burn');
+
+  useEffect(() => {
+    if (type) {
+      setActiveTab(type);
+    }
+  }, [type, isOpen]);
+
+  // Merge Video Files State
+  const [mergeFiles, setMergeFiles] = useState([]);
+  const [mergeOutputTitle, setMergeOutputTitle] = useState('');
+  const [isUploadingMerge, setIsUploadingMerge] = useState(false);
+  const [mergeUploadStatus, setMergeUploadStatus] = useState('');
+  const [isMerging, setIsMerging] = useState(false);
+  const [mergeProgress, setMergeProgress] = useState(0);
+  const [mergeStatusText, setMergeStatusText] = useState('');
+  const [mergeResult, setMergeResult] = useState(null);
+  const [showExportPicker, setShowExportPicker] = useState(false);
+  const [exportedFilesList, setExportedFilesList] = useState([]);
+  const mergeFileInputRef = useRef(null);
+
+  // Auto-populate merge files from queue if empty
+  useEffect(() => {
+    if (activeTab === 'merge' && mergeFiles.length === 0 && queue && queue.length > 0) {
+      const initial = queue.map((v, i) => ({
+        id: 'q_' + (v.id || i),
+        name: v.name || v.serverFilename || `Episode_${i + 1}`,
+        filename: v.serverFilename || v.name,
+        source: 'queue',
+        sizeMb: null
+      }));
+      setMergeFiles(initial);
+    }
+  }, [activeTab, queue]);
+
+  // Default merge title from combinedTitle or first video
+  useEffect(() => {
+    if (!mergeOutputTitle) {
+      if (combinedTitle) {
+        setMergeOutputTitle(combinedTitle);
+      } else if (queue && queue.length > 0) {
+        const first = queue[0].name || queue[0].serverFilename || 'Series';
+        const cleanStem = first.replace(/\.[^/.]+$/, '').replace(/_dubbed$/, '');
+        setMergeOutputTitle(`${cleanStem}_Merged_Full_Movie.mp4`);
+      } else {
+        setMergeOutputTitle('Combined_Full_Movie.mp4');
+      }
+    }
+  }, [combinedTitle, queue, mergeOutputTitle]);
+
+  const handleUploadLocalMergeFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    setIsUploadingMerge(true);
+    setMergeUploadStatus(`Uploading ${files.length} local file(s)...`);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setMergeUploadStatus(`Uploading (${i + 1}/${files.length}): ${file.name}`);
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/upload/video', {
+          method: 'POST',
+          body: formData
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setMergeFiles((prev) => [
+            ...prev,
+            {
+              id: 'loc_' + Math.random().toString(36).substr(2, 9),
+              name: file.name,
+              filename: data.filename,
+              source: 'local',
+              sizeMb: file.size ? (file.size / (1024 * 1024)).toFixed(1) : null
+            }
+          ]);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to upload local merge video:', err);
+      alert('Upload error: ' + err.message);
+    } finally {
+      setIsUploadingMerge(false);
+      setMergeUploadStatus('');
+    }
+  };
+
+  const handleAddFromQueue = () => {
+    const queueItems = queue.map((v, i) => ({
+      id: 'q_' + (v.id || i) + '_' + Math.random().toString(36).substr(2, 4),
+      name: v.name || v.serverFilename || `Episode_${i + 1}`,
+      filename: v.serverFilename || v.name,
+      source: 'queue',
+      sizeMb: null
+    }));
+    setMergeFiles((prev) => {
+      const existingFilenames = new Set(prev.map((p) => p.filename));
+      const newItems = queueItems.filter((q) => !existingFilenames.has(q.filename));
+      return [...prev, ...newItems];
+    });
+  };
+
+  const handleFetchExports = async () => {
+    try {
+      const res = await fetch('/api/exports/list');
+      if (res.ok) {
+        const data = await res.json();
+        setExportedFilesList(data.files || []);
+        setShowExportPicker(true);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch exports:', e);
+    }
+  };
+
+  const handleSelectExportedFile = (ef) => {
+    setMergeFiles((prev) => [
+      ...prev,
+      {
+        id: 'exp_' + Math.random().toString(36).substr(2, 9),
+        name: ef.name,
+        filename: ef.filename,
+        source: 'export',
+        sizeMb: ef.size_mb
+      }
+    ]);
+    setShowExportPicker(false);
+  };
+
+  const moveMergeItem = (index, direction) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= mergeFiles.length) return;
+    const updated = [...mergeFiles];
+    const [removed] = updated.splice(index, 1);
+    updated.splice(newIndex, 0, removed);
+    setMergeFiles(updated);
+  };
+
+  const removeMergeItem = (id) => {
+    setMergeFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const handleExecuteMerge = async () => {
+    if (mergeFiles.length < 2) {
+      alert('Please select at least 2 video files to merge.');
+      return;
+    }
+    setIsMerging(true);
+    setMergeProgress(10);
+    setMergeStatusText('Preparing to merge videos...');
+    const jobId = 'concat_' + Math.random().toString(36).substr(2, 9);
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const pRes = await fetch(`/api/render/progress/${jobId}`);
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          if (pData.progress) setMergeProgress(pData.progress);
+          if (pData.message) setMergeStatusText(pData.message);
+        }
+      } catch (e) {}
+    }, 800);
+
+    try {
+      const res = await fetch('/api/render/concat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_filenames: mergeFiles.map((f) => f.filename || f.name),
+          custom_output_filename: mergeOutputTitle || 'Combined_Full_Movie.mp4',
+          job_id: jobId
+        })
+      });
+      clearInterval(pollInterval);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Concatenation failed');
+      }
+      const data = await res.json();
+      setMergeProgress(100);
+      setMergeResult(data);
+      setMergeStatusText('Merge completed successfully!');
+    } catch (err) {
+      clearInterval(pollInterval);
+      alert('Video merge failed: ' + err.message);
+    } finally {
+      setIsMerging(false);
+    }
+  };
 
   // Auto-switch renderScope to batch when modal opens with multiple queue items
   React.useEffect(() => {
@@ -170,6 +360,7 @@ export default function ExportModal({
   const [includeDubbing, setIncludeDubbing] = useState(true);
   const [muteOriginalAudio, setMuteOriginalAudio] = useState(true);
   const [duckingVol, setDuckingVol] = useState(25);
+  const [smartDucking, setSmartDucking] = useState(true);
   const [useAmfGpu, setUseAmfGpu] = useState(true);
   const [addLogoWatermark, setAddLogoWatermark] = useState(false);
   const [watermarkSource, setWatermarkSource] = useState('default'); // 'default' | 'custom'
@@ -181,6 +372,25 @@ export default function ExportModal({
   const [watermarkOpacity, setWatermarkOpacity] = useState(85); // 20 - 100%
   const [watermarkMargin, setWatermarkMargin] = useState(20); // 10 - 60 px
   const [autoPurgeCache, setAutoPurgeCache] = useState(true);
+
+  // 1. Delogo / Foreign Subtitles Cover Strip
+  const [enableDelogo, setEnableDelogo] = useState(false);
+  const [delogoMode, setDelogoMode] = useState('blur'); // 'blur' | 'black_bar'
+  const [delogoArea, setDelogoArea] = useState('bottom_subtitles'); // 'bottom_subtitles' | 'top_banner'
+  const [delogoHeightPct, setDelogoHeightPct] = useState(14); // 8 - 30%
+
+  // 2. Anti-Copyright Safe Shield (Content-ID Bypass)
+  const [enableAntiCopyright, setEnableAntiCopyright] = useState(false);
+  const [antiCopyrightFlip, setAntiCopyrightFlip] = useState(true);
+  const [antiCopyrightZoom, setAntiCopyrightZoom] = useState(1.03); // 1.01 - 1.08
+  const [antiCopyrightColor, setAntiCopyrightColor] = useState(true);
+  const [antiCopyrightSpeed, setAntiCopyrightSpeed] = useState(1.03); // 1.01 - 1.08
+
+  // 7. Endless BGM Auto-Crossfader & Cinematic Fader
+  const [bgmCrossfade, setBgmCrossfade] = useState(true);
+  const [bgmFadeIn, setBgmFadeIn] = useState(2.0); // seconds
+  const [bgmFadeOut, setBgmFadeOut] = useState(3.0); // seconds
+
   const logoFileInputRef = React.useRef(null);
 
   const handleCustomLogoSelect = async (e) => {
@@ -227,14 +437,82 @@ export default function ExportModal({
     <div className="modal-overlay">
       <div className="modal-card" style={{ maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', gap: '8px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src="/logo.png" alt="MK" style={{ width: '24px', height: '24px', borderRadius: '50%', border: '1px solid #ef4444' }} />
-            <h3 style={{ fontSize: '18px', fontWeight: 600 }}>
-              {type === 'subs' ? 'Export Subtitles' : 'Burn & Render MP4 Video'}
-            </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <img src="/logo.png" alt="MK" style={{ width: '24px', height: '24px', borderRadius: '50%', border: '1px solid #ef4444' }} />
+              <h3 style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-bright)' }}>
+                MK Studio Tools
+              </h3>
+            </div>
+
+            {/* Mode Tabs */}
+            <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--bg-base)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+              <button
+                type="button"
+                onClick={() => setActiveTab('burn')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: 'none',
+                  backgroundColor: activeTab === 'burn' ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
+                  color: activeTab === 'burn' ? '#ffffff' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+              >
+                <Flame size={12} style={{ color: activeTab === 'burn' ? '#ef4444' : 'inherit' }} />
+                <span>Burn Video</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('subs')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: 'none',
+                  backgroundColor: activeTab === 'subs' ? 'rgba(6, 182, 212, 0.2)' : 'transparent',
+                  color: activeTab === 'subs' ? '#06b6d4' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+              >
+                <FileText size={12} />
+                <span>Export Subs</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('merge')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: 'none',
+                  backgroundColor: activeTab === 'merge' ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                  color: activeTab === 'merge' ? '#38bdf8' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+              >
+                <Layers size={12} />
+                <span>Merge Files</span>
+              </button>
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {type === 'burn' && downloadResult && (
+            {activeTab === 'burn' && downloadResult && (
               <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--bg-base)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                 <button
                   type="button"
@@ -286,7 +564,408 @@ export default function ExportModal({
           </div>
         </div>
 
-        {type === 'subs' ? (
+        {activeTab === 'merge' ? (
+          /* ================= Merge / Concat Files Form ================= */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Banner / Info */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                borderRadius: '10px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#38bdf8'
+                  }}
+                >
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-bright)' }}>
+                    Direct Video Merger & Combiner
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Stitch multiple video files into 1 full movie video without re-encoding everything from scratch.
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.15)', padding: '4px 8px', borderRadius: '6px' }}>
+                {mergeFiles.length} {mergeFiles.length === 1 ? 'Video' : 'Videos'}
+              </div>
+            </div>
+
+            {/* Success Result View if merge finished */}
+            {mergeResult && (
+              <div
+                style={{
+                  padding: '16px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  textAlign: 'center'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#34d399', fontWeight: 600, fontSize: '14px' }}>
+                  <CheckCircle2 size={18} />
+                  <span>Merged Video Successfully Created!</span>
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-bright)', wordBreak: 'break-all', fontFamily: 'monospace', backgroundColor: 'rgba(0,0,0,0.3)', padding: '6px 10px', borderRadius: '6px' }}>
+                  {mergeResult.export_filename}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await fetch('/api/exports/open-folder', { method: 'POST' });
+                      } catch (e) {
+                        console.warn(e);
+                      }
+                    }}
+                    className="btn-secondary"
+                    style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <FolderCheck size={14} style={{ color: '#34d399' }} />
+                    <span>Open in Folder</span>
+                  </button>
+                  <a
+                    href={mergeResult.download_url}
+                    download={mergeResult.export_filename}
+                    className="btn-primary"
+                    style={{ fontSize: '12px', padding: '6px 14px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Download size={14} />
+                    <span>Download Merged Video</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setMergeResult(null)}
+                    className="btn-secondary"
+                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    Merge Another Set
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Action Toolbar to Add Files */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <input
+                type="file"
+                multiple
+                accept="video/*"
+                ref={mergeFileInputRef}
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleUploadLocalMergeFiles(Array.from(e.target.files));
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => mergeFileInputRef.current?.click()}
+                disabled={isUploadingMerge || isMerging}
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '7px 12px', borderColor: 'rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
+              >
+                {isUploadingMerge ? <Loader2 size={13} className="animate-spin" /> : <FolderOpen size={13} />}
+                <span>+ Select Any Video File(s)</span>
+              </button>
+
+              {queue && queue.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleAddFromQueue}
+                  disabled={isMerging}
+                  className="btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '7px 12px' }}
+                  title="Add all videos currently in the studio queue"
+                >
+                  <Film size={13} style={{ color: '#f59e0b' }} />
+                  <span>+ Add from Queue ({queue.length})</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleFetchExports}
+                disabled={isMerging}
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '7px 12px' }}
+                title="Choose from rendered dubbed export videos"
+              >
+                <FolderCheck size={13} style={{ color: '#34d399' }} />
+                <span>+ Add from Rendered Exports</span>
+              </button>
+
+              {mergeFiles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setMergeFiles([])}
+                  disabled={isMerging}
+                  className="btn-secondary"
+                  style={{ marginLeft: 'auto', fontSize: '11px', color: '#f87171', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <Trash2 size={12} />
+                  <span>Clear All</span>
+                </button>
+              )}
+            </div>
+
+            {/* Uploading Status Banner */}
+            {isUploadingMerge && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '8px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontSize: '12px' }}>
+                <Loader2 size={14} className="animate-spin" />
+                <span>{mergeUploadStatus || 'Uploading local videos to studio...'}</span>
+              </div>
+            )}
+
+            {/* Export Picker Dropdown */}
+            {showExportPicker && (
+              <div style={{ backgroundColor: 'var(--bg-base)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-bright)' }}>Choose Rendered Video to Add:</span>
+                  <button type="button" onClick={() => setShowExportPicker(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={14} /></button>
+                </div>
+                {exportedFilesList.length === 0 ? (
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '8px', textAlign: 'center' }}>No exported videos found in storage/exports yet.</div>
+                ) : (
+                  <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {exportedFilesList.map((ef) => (
+                      <button
+                        key={ef.filename}
+                        type="button"
+                        onClick={() => handleSelectExportedFile(ef)}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          backgroundColor: 'var(--bg-tertiary)',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-bright)',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          textAlign: 'left'
+                        }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ef.name}</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '10px', flexShrink: 0, marginLeft: '8px' }}>{ef.size_mb} MB</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Reorderable Videos Sequence List */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  Playback Order Sequence ({mergeFiles.length} items):
+                </label>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Use ▲ ▼ to adjust playback sequence</span>
+              </div>
+
+              {mergeFiles.length === 0 ? (
+                <div
+                  style={{
+                    padding: '30px 16px',
+                    border: '2px dashed var(--border-color)',
+                    borderRadius: '10px',
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: 'var(--text-muted)',
+                    backgroundColor: 'rgba(255,255,255,0.01)'
+                  }}
+                >
+                  <Layers size={28} style={{ opacity: 0.4 }} />
+                  <div style={{ fontSize: '13px', fontWeight: 500 }}>No videos selected for merging yet.</div>
+                  <div style={{ fontSize: '11px' }}>Click <strong>"+ Select Any Video File(s)"</strong> above to pick videos from your computer, or add from your studio queue.</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflowY: 'auto' }}>
+                  {mergeFiles.map((item, idx) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        backgroundColor: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        fontSize: '12px'
+                      }}
+                    >
+                      {/* Order number badge */}
+                      <div
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                          color: '#38bdf8',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '11px',
+                          flexShrink: 0
+                        }}
+                      >
+                        #{idx + 1}
+                      </div>
+
+                      {/* Title & Source */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, color: 'var(--text-bright)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {item.name}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          <span style={{ textTransform: 'uppercase', color: item.source === 'export' ? '#34d399' : item.source === 'queue' ? '#f59e0b' : '#38bdf8' }}>
+                            ● {item.source}
+                          </span>
+                          {item.sizeMb && <span>• {item.sizeMb} MB</span>}
+                        </div>
+                      </div>
+
+                      {/* Move Up / Down Buttons */}
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        <button
+                          type="button"
+                          onClick={() => moveMergeItem(idx, -1)}
+                          disabled={idx === 0 || isMerging}
+                          className="btn-secondary"
+                          style={{ padding: '3px 6px', fontSize: '10px', opacity: idx === 0 ? 0.3 : 1 }}
+                          title="Move Up"
+                        >
+                          <ArrowUp size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveMergeItem(idx, 1)}
+                          disabled={idx === mergeFiles.length - 1 || isMerging}
+                          className="btn-secondary"
+                          style={{ padding: '3px 6px', fontSize: '10px', opacity: idx === mergeFiles.length - 1 ? 0.3 : 1 }}
+                          title="Move Down"
+                        >
+                          <ArrowDown size={12} />
+                        </button>
+                      </div>
+
+                      {/* Remove Button */}
+                      <button
+                        type="button"
+                        onClick={() => removeMergeItem(item.id)}
+                        disabled={isMerging}
+                        className="btn-secondary"
+                        style={{ padding: '3px 6px', color: '#f87171' }}
+                        title="Remove from merge list"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Combined Master File Name Setting */}
+            <div>
+              <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                Output Video Filename:
+              </label>
+              <input
+                type="text"
+                value={mergeOutputTitle}
+                onChange={(e) => setMergeOutputTitle(e.target.value)}
+                placeholder="Combined_Master_Video.mp4"
+                style={{
+                  width: '100%',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  color: '#ffffff',
+                  padding: '8px 12px',
+                  fontSize: '13px',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Merging Progress Bar */}
+            {isMerging && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#38bdf8' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Loader2 size={12} className="animate-spin" />
+                    <span>{mergeStatusText || 'Stitching video files...'}</span>
+                  </span>
+                  <span style={{ fontWeight: 600 }}>{mergeProgress}%</span>
+                </div>
+                <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ width: `${mergeProgress}%`, height: '100%', backgroundColor: '#38bdf8', transition: 'width 0.3s ease' }} />
+                </div>
+              </div>
+            )}
+
+            {/* Footer buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
+              <button onClick={onClose} className="btn-secondary" disabled={isMerging}>
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteMerge}
+                disabled={mergeFiles.length < 2 || isMerging || isUploadingMerge}
+                className="btn-primary"
+                style={{
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)',
+                  minWidth: '180px',
+                  justifyContent: 'center'
+                }}
+              >
+                {isMerging ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Merging Videos ({mergeProgress}%)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Layers size={14} />
+                    <span>Merge ({mergeFiles.length} Videos)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : activeTab === 'subs' ? (
           /* ================= Subtitle Export Form ================= */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
@@ -376,7 +1055,7 @@ export default function ExportModal({
                   </p>
                 </div>
 
-                {/* Subtitle Font & Style Info Card with 1-click Change Button */}
+                {/* Subtitle Font & Style Info Card */}
                 <div
                   style={{
                     backgroundColor: 'rgba(15, 23, 42, 0.7)',
@@ -386,42 +1065,17 @@ export default function ExportModal({
                     fontSize: '12px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
+                    justifyContent: 'center',
                     width: '100%',
-                    gap: '8px',
-                    flexWrap: 'wrap'
+                    gap: '8px'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Type size={16} style={{ color: '#38bdf8' }} />
-                    <div style={{ textAlign: 'left' }}>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Subtitle Font: </span>
-                      <strong style={{ color: '#38bdf8' }}>{fontName}</strong>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}> ({fontSize}px • {stylePreset === 'modern_yellow' ? 'Yellow' : stylePreset === 'box_dark' ? 'Dark Box' : 'White'})</span>
-                    </div>
+                  <Type size={16} style={{ color: '#38bdf8' }} />
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Subtitle Font: </span>
+                    <strong style={{ color: '#38bdf8' }}>{fontName}</strong>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}> ({fontSize}px • {stylePreset === 'modern_yellow' ? 'Yellow' : stylePreset === 'box_dark' ? 'Dark Box' : 'White'})</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('settings')}
-                    style={{
-                      padding: '5px 10px',
-                      borderRadius: '6px',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                      color: '#f59e0b',
-                      border: '1px solid rgba(245, 158, 11, 0.4)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.15s ease'
-                    }}
-                    title="Change subtitle font, size, position or style and re-render"
-                  >
-                    <Sliders size={12} />
-                    <span>Change Font & Re-render</span>
-                  </button>
                 </div>
 
                 {/* Storage saving note */}
@@ -783,12 +1437,65 @@ export default function ExportModal({
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px',
-                        zIndex: 2
+                        zIndex: 3
                       }}
                     >
                       <Eye size={10} />
                       <span>LIVE PREVIEW</span>
                     </div>
+
+                    {/* Anti-Copyright Shield Active indicator badge */}
+                    {enableAntiCopyright && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '6px',
+                          right: addLogoWatermark && watermarkPosition === 'top_right' ? '75px' : '8px',
+                          fontSize: '8px',
+                          color: '#34d399',
+                          backgroundColor: 'rgba(5, 150, 105, 0.25)',
+                          border: '1px solid rgba(5, 150, 105, 0.45)',
+                          padding: '2px 5px',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          zIndex: 3,
+                          fontWeight: 600,
+                          pointerEvents: 'none'
+                        }}
+                      >
+                        <Shield size={9} />
+                        <span>SAFE SHIELD ({antiCopyrightSpeed}x)</span>
+                      </div>
+                    )}
+
+                    {/* Delogo Strip Live Preview */}
+                    {enableDelogo && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          ...(delogoArea === 'top_banner'
+                            ? { top: 0, height: `${Math.max(10, Math.min(35, delogoHeightPct))}%` }
+                            : { bottom: 0, height: `${Math.max(10, Math.min(35, delogoHeightPct))}%` }),
+                          backgroundColor: delogoMode === 'black_bar' ? 'rgba(0, 0, 0, 0.88)' : 'rgba(30, 41, 59, 0.82)',
+                          backdropFilter: delogoMode === 'blur' ? 'blur(8px)' : 'none',
+                          borderTop: delogoArea === 'bottom_subtitles' ? '1px dashed #f59e0b' : 'none',
+                          borderBottom: delogoArea === 'top_banner' ? '1px dashed #f59e0b' : 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          zIndex: 1,
+                          pointerEvents: 'none'
+                        }}
+                      >
+                        <span style={{ fontSize: '9px', color: '#fbbf24', fontWeight: 600, letterSpacing: '0.5px' }}>
+                          {delogoMode === 'blur' ? '🌫️ DELOGO BLUR STRIP' : '⬛ CINEMA COVER STRIP'}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Watermark Live Preview with custom position, size, opacity */}
                     {addLogoWatermark && (
@@ -885,7 +1592,7 @@ export default function ExportModal({
                             : '1px 1px 2px rgba(0,0,0,0.8)',
                           pointerEvents: 'none',
                           transition: 'all 0.12s ease-out',
-                          zIndex: 1
+                          zIndex: 2
                         }}
                       >
                         {sampleSubtitleText}
@@ -1295,14 +2002,36 @@ export default function ExportModal({
                       ✓ Original foreign dialogue will be completely muted. Output plays only your new Khmer AI voiceover and loaded BGM.
                     </div>
                   ) : includeDubbing && !muteOriginalAudio ? (
-                    <div style={{ paddingLeft: '24px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Background Audio Ducking:</span>
-                        <span>{duckingVol}%</span>
+                    <div style={{ paddingLeft: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-bright)', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={smartDucking}
+                          onChange={(e) => setSmartDucking(e.target.checked)}
+                          style={{ accentColor: 'var(--accent-primary)', width: '14px', height: '14px' }}
+                        />
+                        <span style={{ fontWeight: 600 }}>Smart Dynamic Auto-Ducking (FFmpeg Sidechain)</span>
+                      </label>
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          color: smartDucking ? '#6ee7b7' : 'var(--text-muted)',
+                          backgroundColor: smartDucking ? 'rgba(5, 150, 105, 0.12)' : 'rgba(255,255,255,0.03)',
+                          padding: '6px 10px',
+                          borderRadius: '6px'
+                        }}
+                      >
+                        {smartDucking
+                          ? `✓ Lowers background audio down to ${duckingVol}% only when AI voice is speaking; smoothly swells back to 100% during pauses.`
+                          : `Static reduction: Background audio permanently lowered to ${duckingVol}% throughout the video.`}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginTop: '2px' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Ducked Voiceover Volume Level:</span>
+                        <span style={{ fontWeight: 600, color: 'var(--accent-text)' }}>{duckingVol}%</span>
                       </div>
                       <input
                         type="range"
-                        min="0"
+                        min="5"
                         max="50"
                         value={duckingVol}
                         onChange={(e) => setDuckingVol(parseInt(e.target.value))}
@@ -1329,6 +2058,73 @@ export default function ExportModal({
                       </span>
                     </div>
                   )}
+
+                  {/* Endless BGM Auto-Crossfader & Cinematic Fader */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={bgmCrossfade}
+                        onChange={(e) => setBgmCrossfade(e.target.checked)}
+                        style={{ accentColor: 'var(--accent-primary)', width: '14px', height: '14px' }}
+                      />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: bgmCrossfade ? 600 : 400 }}>
+                        <Music size={15} style={{ color: '#818cf8' }} />
+                        Endless BGM Auto-Crossfader & Smooth Fade In/Out
+                      </span>
+                    </label>
+
+                    {bgmCrossfade && (
+                      <div
+                        style={{
+                          backgroundColor: 'var(--bg-base)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          padding: '10px 12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                          fontSize: '11px'
+                        }}
+                      >
+                        <div style={{ color: '#a5b4fc', backgroundColor: 'rgba(99, 102, 241, 0.1)', padding: '6px 8px', borderRadius: '5px' }}>
+                          ✓ Seamlessly loops BGM with {bgmFadeIn}s intro fade-in and {bgmFadeOut}s cinematic fade-out at video conclusion.
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Fade-In Time:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{bgmFadeIn}s</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="5.0"
+                              step="0.5"
+                              value={bgmFadeIn}
+                              onChange={(e) => setBgmFadeIn(parseFloat(e.target.value))}
+                              style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                            />
+                          </div>
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Fade-Out Time:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{bgmFadeOut}s</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="1.0"
+                              max="6.0"
+                              step="0.5"
+                              value={bgmFadeOut}
+                              onChange={(e) => setBgmFadeOut(parseFloat(e.target.value))}
+                              style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
@@ -1359,37 +2155,19 @@ export default function ExportModal({
                       >
                         {/* 1. Logo Image Source Selector */}
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>WATERMARK LOGO IMAGE:</span>
-                            {watermarkSource === 'custom' && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setWatermarkSource('default');
-                                  setCustomLogoFile(null);
-                                  setCustomLogoUrl(null);
-                                  setCustomLogoPath(null);
-                                }}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  color: '#f87171',
-                                  fontSize: '11px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '3px'
-                                }}
-                              >
-                                <RotateCcw size={11} /> Reset to Default
-                              </button>
-                            )}
                           </div>
 
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <button
                               type="button"
-                              onClick={() => setWatermarkSource('default')}
+                              onClick={() => {
+                                setWatermarkSource('default');
+                                setCustomLogoFile(null);
+                                setCustomLogoUrl(null);
+                                setCustomLogoPath(null);
+                              }}
                               style={{
                                 padding: '8px',
                                 borderRadius: '6px',
@@ -1535,6 +2313,215 @@ export default function ExportModal({
                     )}
                   </div>
 
+                  {/* Tool 1: Delogo / Subtitle Cover Strip */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableDelogo}
+                        onChange={(e) => setEnableDelogo(e.target.checked)}
+                        style={{ accentColor: '#f59e0b', width: '14px', height: '14px' }}
+                      />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: enableDelogo ? 600 : 400 }}>
+                        <EyeOff size={15} style={{ color: '#f59e0b' }} />
+                        Cover / Blur Old Foreign Subtitles (Delogo Strip)
+                      </span>
+                    </label>
+
+                    {enableDelogo && (
+                      <div
+                        style={{
+                          backgroundColor: 'var(--bg-base)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={{ fontSize: '11px', color: '#fcd34d', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '6px 10px', borderRadius: '6px' }}>
+                          ✓ Places a blur or cinema matte bar over hardcoded foreign subtitles before burning your new Khmer text on top.
+                        </div>
+
+                        {/* Mode Selector */}
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '5px' }}>
+                            COVER STYLE:
+                          </span>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                            {[
+                              { id: 'blur', label: '🌫️ Gaussian Blur (12px Box Blur)' },
+                              { id: 'black_bar', label: '⬛ Cinema Matte Bar (85% Black)' }
+                            ].map((m) => (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => setDelogoMode(m.id)}
+                                style={{
+                                  padding: '7px 8px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${delogoMode === m.id ? '#f59e0b' : 'var(--border-color)'}`,
+                                  backgroundColor: delogoMode === m.id ? 'rgba(245, 158, 11, 0.18)' : 'var(--bg-tertiary)',
+                                  color: delogoMode === m.id ? '#ffffff' : 'var(--text-muted)',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  textAlign: 'center'
+                                }}
+                              >
+                                {m.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Position & Height */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', alignItems: 'center' }}>
+                          <div>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '5px' }}>
+                              TARGET LOCATION:
+                            </span>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                              {[
+                                { id: 'bottom_subtitles', label: 'Bottom Subs' },
+                                { id: 'top_banner', label: 'Top Banner' }
+                              ].map((loc) => (
+                                <button
+                                  key={loc.id}
+                                  type="button"
+                                  onClick={() => setDelogoArea(loc.id)}
+                                  style={{
+                                    padding: '6px 4px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${delogoArea === loc.id ? '#f59e0b' : 'var(--border-color)'}`,
+                                    backgroundColor: delogoArea === loc.id ? 'rgba(245, 158, 11, 0.18)' : 'var(--bg-tertiary)',
+                                    color: delogoArea === loc.id ? '#ffffff' : 'var(--text-muted)',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {loc.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Strip Height:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{delogoHeightPct}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="8"
+                              max="28"
+                              step="1"
+                              value={delogoHeightPct}
+                              onChange={(e) => setDelogoHeightPct(parseInt(e.target.value))}
+                              style={{ width: '100%', accentColor: '#f59e0b', cursor: 'pointer' }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tool 2: Anti-Copyright Safe Shield */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableAntiCopyright}
+                        onChange={(e) => setEnableAntiCopyright(e.target.checked)}
+                        style={{ accentColor: '#10b981', width: '14px', height: '14px' }}
+                      />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: enableAntiCopyright ? 600 : 400 }}>
+                        <Shield size={15} style={{ color: '#10b981' }} />
+                        Anti-Copyright Safe Shield (TikTok / Reels / YouTube Bot Safe)
+                      </span>
+                    </label>
+
+                    {enableAntiCopyright && (
+                      <div
+                        style={{
+                          backgroundColor: 'var(--bg-base)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={{ fontSize: '11px', color: '#6ee7b7', backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '6px 10px', borderRadius: '6px' }}>
+                          🛡️ Multi-layer algorithmic transforms designed to bypass automated Content-ID audio/video fingerprinting bots while retaining cinema clarity.
+                        </div>
+
+                        {/* Options Grid */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          {/* 1. Horizontal Flip */}
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-bright)', cursor: 'pointer', backgroundColor: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px' }}>
+                            <input
+                              type="checkbox"
+                              checked={antiCopyrightFlip}
+                              onChange={(e) => setAntiCopyrightFlip(e.target.checked)}
+                              style={{ accentColor: '#10b981' }}
+                            />
+                            <span>Horizontal Mirror Flip (hflip)</span>
+                          </label>
+
+                          {/* 2. Color Grading Matrix Shift */}
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-bright)', cursor: 'pointer', backgroundColor: 'var(--bg-tertiary)', padding: '8px 10px', borderRadius: '6px' }}>
+                            <input
+                              type="checkbox"
+                              checked={antiCopyrightColor}
+                              onChange={(e) => setAntiCopyrightColor(e.target.checked)}
+                              style={{ accentColor: '#10b981' }}
+                            />
+                            <span>Color Curve Shift (Histogram)</span>
+                          </label>
+                        </div>
+
+                        {/* Sliders for Zoom & Speed */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Edge Micro-Zoom:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{Math.round(antiCopyrightZoom * 100)}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="100"
+                              max="108"
+                              step="1"
+                              value={Math.round(antiCopyrightZoom * 100)}
+                              onChange={(e) => setAntiCopyrightZoom(parseFloat((parseInt(e.target.value) / 100).toFixed(2)))}
+                              style={{ width: '100%', accentColor: '#10b981', cursor: 'pointer' }}
+                            />
+                          </div>
+
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Audio/Video Pacing:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{antiCopyrightSpeed}x (Pitch Safe)</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="100"
+                              max="108"
+                              step="1"
+                              value={Math.round(antiCopyrightSpeed * 100)}
+                              onChange={(e) => setAntiCopyrightSpeed(parseFloat((parseInt(e.target.value) / 100).toFixed(2)))}
+                              style={{ width: '100%', accentColor: '#10b981', cursor: 'pointer' }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -1571,6 +2558,19 @@ export default function ExportModal({
                         watermark_opacity: watermarkOpacity / 100,
                         watermark_margin: watermarkMargin,
                         background_ducking_volume: duckingVol / 100,
+                        smart_ducking: smartDucking,
+                        bgm_crossfade: bgmCrossfade,
+                        bgm_fade_in: parseFloat(bgmFadeIn) || 2.0,
+                        bgm_fade_out: parseFloat(bgmFadeOut) || 3.0,
+                        enable_delogo: enableDelogo,
+                        delogo_mode: delogoMode,
+                        delogo_area: delogoArea,
+                        delogo_height_pct: (parseFloat(delogoHeightPct) || 14) / 100,
+                        enable_anti_copyright: enableAntiCopyright,
+                        anti_copyright_flip: antiCopyrightFlip,
+                        anti_copyright_zoom: parseFloat(antiCopyrightZoom) || 1.03,
+                        anti_copyright_color: antiCopyrightColor,
+                        anti_copyright_speed: parseFloat(antiCopyrightSpeed) || 1.03,
                         use_amf_gpu: useAmfGpu,
                         combine_into_one: renderScope === 'batch' && batchOutputMode === 'combine',
                         combined_filename: combinedTitle || 'Combined_Full_Movie.mp4',

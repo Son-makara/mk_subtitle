@@ -86,6 +86,38 @@ async def run_tests():
     rendered_info = probe_video(EXPORTS_DIR / rendered_file)
     assert rendered_info.get("has_audio") is True, "Original video audio/music must NOT be muted when rendered without Khmer voice!"
 
+    print("\n=== [7] Testing faster-whisper STT with Silero VAD ===")
+    from backend.app.services.whisper_stt import run_whisper_transcribe_sync
+    # Use the generated TTS audio file from Step 5
+    stt_audio_path = str(UPLOADS_DIR.parent / "audio_cache" / tts_res["audio_filename"])
+    items_stt, detected_lang = run_whisper_transcribe_sync(stt_audio_path, model_size="tiny", engine="faster-whisper")
+    print(f"faster-whisper detected language: {detected_lang}, extracted items: {len(items_stt)}")
+
+    print("\n=== [8] Testing Smart Dynamic BGM Auto-Ducking Render ===")
+    duck_burn_req = VideoBurnRequest(
+        video_filename="test_sample.mp4",
+        items=fixed,
+        use_translation=False,
+        include_dubbing=False,
+        smart_ducking=True,
+        background_ducking_volume=0.20,
+        use_amf_gpu=False
+    )
+    duck_rendered = render_and_burn_video(duck_burn_req)
+    print(f"Smart ducking rendered video: {duck_rendered}")
+    assert duck_rendered.endswith(".mp4")
+
+    print("\n=== [9] Testing Video Concat / Merge ===")
+    from backend.app.services.ffmpeg_runner import concat_videos
+    merged_file = concat_videos(
+        video_filenames=["test_sample.mp4", "test_sample.mp4"],
+        custom_output_filename="test_merged_sample.mp4"
+    )
+    print(f"Merged video created: {merged_file}")
+    assert merged_file.endswith(".mp4")
+    merged_info = probe_video(EXPORTS_DIR / merged_file)
+    assert merged_info.get("duration", 0) > 3.0, "Merged duration should reflect combined videos!"
+
     print("\n✅ ALL TESTS PASSED!")
 
 if __name__ == "__main__":

@@ -232,12 +232,48 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
     filter_chains = []
 
     # --- Video chain ---
-    if has_subtitles and temp_ass_path.exists():
-        filter_chains.append(f"[{video_in}:v]{vf_subtitles}[vsub]")
-        current_v = "[vsub]"
-    else:
-        current_v = f"[{video_in}:v]"
+    current_v = f"[{video_in}:v]"
 
+    # 1. Anti-Copyright Shield transforms
+    if getattr(req, "enable_anti_copyright", False):
+        ac_filters = []
+        if getattr(req, "anti_copyright_flip", True):
+            ac_filters.append("hflip")
+        z = max(1.01, min(getattr(req, "anti_copyright_zoom", 1.03) or 1.03, 1.15))
+        ac_filters.append(f"scale=iw*{z:.3f}:ih*{z:.3f},crop=iw/{z:.3f}:ih/{z:.3f}")
+        if getattr(req, "anti_copyright_color", True):
+            ac_filters.append("eq=contrast=1.03:brightness=0.01:saturation=1.04")
+        spd = max(0.95, min(getattr(req, "anti_copyright_speed", 1.03) or 1.03, 1.25))
+        if abs(spd - 1.0) > 0.005:
+            ac_filters.append(f"setpts=PTS/{spd:.3f}")
+        if ac_filters:
+            filter_chains.append(f"{current_v}{','.join(ac_filters)}[vac]")
+            current_v = "[vac]"
+
+    # 2. Delogo / Cover old foreign subtitles or logos
+    if getattr(req, "enable_delogo", False):
+        mode = getattr(req, "delogo_mode", "blur") or "blur"
+        area = getattr(req, "delogo_area", "bottom_subtitles") or "bottom_subtitles"
+        h_pct = max(0.08, min(getattr(req, "delogo_height_pct", 0.14) or 0.14, 0.35))
+        if area == "bottom_subtitles":
+            if mode == "black_bar":
+                filter_chains.append(f"{current_v}drawbox=x=0:y=ih*{1.0 - h_pct:.3f}:w=iw:h=ih*{h_pct:.3f}:color=black@0.85:t=fill[vdelogo]")
+            else:
+                filter_chains.append(f"{current_v}split[vbase][vcrop];[vcrop]crop=iw:ih*{h_pct:.3f}:0:ih*{1.0 - h_pct:.3f},boxblur=12:6[vblur];[vbase][vblur]overlay=0:H*{1.0 - h_pct:.3f}[vdelogo]")
+            current_v = "[vdelogo]"
+        elif area == "top_right":
+            filter_chains.append(f"{current_v}split[vbase][vcrop];[vcrop]crop=iw*0.22:ih*0.12:iw*0.78:0,boxblur=10:5[vblur];[vbase][vblur]overlay=W*0.78:0[vdelogo]")
+            current_v = "[vdelogo]"
+        elif area == "top_left":
+            filter_chains.append(f"{current_v}split[vbase][vcrop];[vcrop]crop=iw*0.22:ih*0.12:0:0,boxblur=10:5[vblur];[vbase][vblur]overlay=0:0[vdelogo]")
+            current_v = "[vdelogo]"
+
+    # 3. Subtitles Burn
+    if has_subtitles and temp_ass_path.exists():
+        filter_chains.append(f"{current_v}{vf_subtitles}[vsub]")
+        current_v = "[vsub]"
+
+    # 4. Watermark Logo
     if logo_in is not None:
         wm_size = max(30, min(getattr(req, "watermark_size", 90) or 90, 500))
         wm_opacity = max(0.1, min(getattr(req, "watermark_opacity", 0.85) or 0.85, 1.0))
@@ -283,51 +319,102 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
 
     audio_mapping = None
 
+    duck_level = max(0.05, min(req.background_ducking_volume, 0.95))
+    duck_ratio = round(max(2.0, min(16.0, 1.0 / duck_level)), 1)
+    attack_ms = max(10, getattr(req, "ducking_attack", 40) or 40)
+    release_ms = max(50, getattr(req, "ducking_release", 350) or 350)
+    use_smart_ducking = getattr(req, "smart_ducking", True)
+
+    # BGM Fader filter
+    bgm_fade_in = getattr(req, "bgm_fade_in", 2.0) or 2.0
+    bgm_fade_out = getattr(req, "bgm_fade_out", 3.0) or 3.0
+    bgm_use_fade = getattr(req, "bgm_crossfade", True) and total_dur > 5.0
+    if bgm_in is not None:
+        if bgm_use_fade:
+            fade_out_st = max(0.0, total_dur - bgm_fade_out)
+            bgm_filt_str = f"[{bgm_in}:a]volume={req.bgm_volume},afade=t=in:ss=0:d={bgm_fade_in:.1f},afade=t=out:st={fade_out_st:.2f}:d={bgm_fade_out:.1f}[bgmv]"
+        else:
+            bgm_filt_str = f"[{bgm_in}:a]volume={req.bgm_volume}[bgmv]"
+        filter_chains.append(bgm_filt_str)
+
+    # Audio anti-copyright speed filter
+    orig_a_in = f"[{video_in}:a]"
+    dubbed_a_in = f"[{dubbed_in}:a]" if dubbed_in is not None else None
+    if getattr(req, "enable_anti_copyright", False):
+        spd = max(0.95, min(getattr(req, "anti_copyright_speed", 1.03) or 1.03, 1.25))
+        if abs(spd - 1.0) > 0.005:
+            if has_orig_audio:
+                filter_chains.append(f"[{video_in}:a]atempo={spd:.3f}[orig_spd]")
+                orig_a_in = "[orig_spd]"
+            if dubbed_in is not None:
+                filter_chains.append(f"[{dubbed_in}:a]atempo={spd:.3f}[dubbed_spd]")
+                dubbed_a_in = "[dubbed_spd]"
+
     if dubbed_in is not None and bgm_in is not None:
         if keep_original_audio:
-            filter_chains.append(
-                f"[{video_in}:a]volume={req.background_ducking_volume}[ducked];"
-                f"[{bgm_in}:a]volume={req.bgm_volume}[bgmv];"
-                f"[ducked][{dubbed_in}:a][bgmv]amix=inputs=3:duration=first[aout]"
-            )
+            if use_smart_ducking:
+                filter_chains.append(
+                    f"{orig_a_in}volume=1.0[orig_bg];"
+                    f"[orig_bg][bgmv]amix=inputs=2:normalize=0[bg_all];"
+                    f"[bg_all]{dubbed_a_in}sidechaincompress=threshold=0.03:ratio={duck_ratio}:attack={attack_ms}:release={release_ms}[ducked_bg];"
+                    f"[ducked_bg]{dubbed_a_in}amix=inputs=2:duration=first:normalize=0[aout]"
+                )
+            else:
+                filter_chains.append(
+                    f"{orig_a_in}volume={req.background_ducking_volume}[ducked];"
+                    f"[ducked]{dubbed_a_in}[bgmv]amix=inputs=3:duration=first[aout]"
+                )
         else:
-            filter_chains.append(
-                f"[{bgm_in}:a]volume={req.bgm_volume}[bgmv];"
-                f"[{dubbed_in}:a][bgmv]amix=inputs=2:duration=first[aout]"
-            )
+            if use_smart_ducking:
+                filter_chains.append(
+                    f"[bgmv]{dubbed_a_in}sidechaincompress=threshold=0.03:ratio={duck_ratio}:attack={attack_ms}:release={release_ms}[ducked_bg];"
+                    f"[ducked_bg]{dubbed_a_in}amix=inputs=2:duration=first:normalize=0[aout]"
+                )
+            else:
+                filter_chains.append(
+                    f"[{dubbed_in}:a][bgmv]amix=inputs=2:duration=first[aout]"
+                )
         audio_mapping = "[aout]"
 
     elif dubbed_in is not None and bgm_in is None:
         if keep_original_audio:
-            filter_chains.append(
-                f"[{video_in}:a]volume={req.background_ducking_volume}[ducked];"
-                f"[ducked][{dubbed_in}:a]amix=inputs=2:duration=first[aout]"
-            )
+            if use_smart_ducking:
+                filter_chains.append(
+                    f"{orig_a_in}{dubbed_a_in}sidechaincompress=threshold=0.03:ratio={duck_ratio}:attack={attack_ms}:release={release_ms}[ducked_orig];"
+                    f"[ducked_orig]{dubbed_a_in}amix=inputs=2:duration=first:normalize=0[aout]"
+                )
+            else:
+                filter_chains.append(
+                    f"{orig_a_in}volume={req.background_ducking_volume}[ducked];"
+                    f"[ducked]{dubbed_a_in}amix=inputs=2:duration=first[aout]"
+                )
             audio_mapping = "[aout]"
         else:
             filter_chains.append(
-                f"[{dubbed_in}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[aout]"
+                f"{dubbed_a_in}aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[aout]"
             )
             audio_mapping = "[aout]"
 
     elif dubbed_in is None and bgm_in is not None:
         if has_orig_audio:
             filter_chains.append(
-                f"[{video_in}:a]volume=1.0[orig];"
-                f"[{bgm_in}:a]volume={req.bgm_volume}[bgmv];"
+                f"{orig_a_in}volume=1.0[orig];"
                 f"[orig][bgmv]amix=inputs=2:duration=first[aout]"
             )
             audio_mapping = "[aout]"
         else:
             filter_chains.append(
-                f"[{bgm_in}:a]volume={req.bgm_volume}[aout]"
+                f"[bgmv]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[aout]"
             )
             audio_mapping = "[aout]"
 
     else:
         # Neither dubbing nor BGM: Preserve original audio and music (never mute if original audio exists)
         if has_orig_audio:
-            audio_mapping = f"{video_in}:a?"
+            if getattr(req, "enable_anti_copyright", False) and abs(getattr(req, "anti_copyright_speed", 1.03) - 1.0) > 0.005:
+                audio_mapping = "[orig_spd]"
+            else:
+                audio_mapping = f"{video_in}:a?"
         else:
             audio_mapping = "-an"
 

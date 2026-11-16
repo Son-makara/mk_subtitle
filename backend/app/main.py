@@ -24,7 +24,8 @@ from .models.subtitle import (
     VideoBurnRequest,
     STTRequest,
     VocalSeparationRequest,
-    VideoConcatRequest
+    VideoConcatRequest,
+    OpenVlcRequest
 )
 from .services.subtitle_parser import (
     parse_subtitles_auto,
@@ -103,9 +104,37 @@ async def upload_video(file: UploadFile = File(...), local_path: Optional[str] =
 
     register_media_path(str(dest_path))
     metadata = await asyncio.to_thread(probe_video, dest_path)
+
+    # Universal VLC-like web compatibility:
+    # If container is not MP4 (e.g. MKV, AVI, TS, FLV) or audio codec is not natively playable in Chromium (AC3, DTS, etc.)
+    # create a fast remuxed MP4 (using -c:v copy which is near-instant, only converting audio to AAC)
+    web_playable_name = unique_name
+    ext_lower = ext.lower()
+    audio_codec = (metadata.get("audio_codec") or "").lower()
+    needs_remux = ext_lower in [".mkv", ".avi", ".ts", ".flv", ".wmv", ".webm", ".mov"] or audio_codec in ["ac3", "eac3", "dts", "dca", "truehd"]
+    
+    if needs_remux:
+        web_name = f"web_{Path(unique_name).stem}.mp4"
+        web_path = UPLOADS_DIR / web_name
+        try:
+            remux_cmd = [
+                str(FFMPEG_PATH), "-y",
+                "-i", str(dest_path),
+                "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "192k",
+                "-movflags", "+faststart",
+                str(web_path)
+            ]
+            p = subprocess.run(remux_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=SUBPROCESS_FLAGS, timeout=35)
+            if p.returncode == 0 and web_path.exists() and web_path.stat().st_size > 1000:
+                web_playable_name = web_name
+                register_media_path(str(web_path))
+        except Exception as ex:
+            print(f"Web remux note: {ex}")
+
     return {
         "filename": unique_name,
-        "url": f"/api/video/{unique_name}",
+        "url": f"/api/video/{web_playable_name}",
         "name": file.filename,
         "metadata": metadata
     }
@@ -180,6 +209,22 @@ def _safe_remove(path: Path):
     except Exception as e:
         print(f"Error removing {path}: {e}")
 
+@app.get("/api/exports/list")
+async def list_exports():
+    """Lists rendered video files available in storage/exports"""
+    files = []
+    valid_exts = {".mp4", ".mkv", ".mov", ".ts", ".webm"}
+    for f in sorted(EXPORTS_DIR.glob("*"), key=lambda x: x.stat().st_mtime, reverse=True):
+        if f.is_file() and not f.name.startswith(".gitkeep") and f.suffix.lower() in valid_exts:
+            size_mb = round(f.stat().st_size / (1024 * 1024), 2)
+            files.append({
+                "name": f.name,
+                "filename": f.name,
+                "size_mb": size_mb,
+                "url": f"/api/exports/{urllib.parse.quote(f.name)}"
+            })
+    return {"files": files}
+
 @app.get("/api/exports/{filename}")
 async def download_export(
     filename: str,
@@ -206,6 +251,58 @@ async def open_exports_folder_endpoint():
             subprocess.Popen(["explorer.exe", str(EXPORTS_DIR)], creationflags=SUBPROCESS_FLAGS)
             return {"status": "success", "path": str(EXPORTS_DIR)}
         return {"status": "unsupported"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/player/open-vlc")
+async def open_vlc_endpoint(req: OpenVlcRequest):
+    """Launches native VLC Media Player with the video and current subtitles"""
+    try:
+        vlc_candidates = [
+            r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+            r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
+            shutil.which("vlc") or ""
+        ]
+        vlc_bin = next((c for c in vlc_candidates if c and os.path.exists(c)), None)
+        if not vlc_bin:
+            return {
+                "status": "not_installed",
+                "message": "VLC Media Player was not found. Please install VLC from https://www.videolan.org/vlc/"
+            }
+
+        # Resolve video path on disk
+        video_path = None
+        if req.video_filename:
+            for d in [UPLOADS_DIR, EXPORTS_DIR]:
+                candidate = d / req.video_filename
+                if candidate.exists() and candidate.is_file():
+                    video_path = candidate
+                    break
+            if not video_path:
+                from .services.whisper_stt import _MEDIA_REGISTRY
+                if req.video_filename in _MEDIA_REGISTRY:
+                    reg_p = Path(_MEDIA_REGISTRY[req.video_filename])
+                    if reg_p.exists():
+                        video_path = reg_p
+
+        if not video_path or not video_path.exists():
+            raise HTTPException(status_code=404, detail="Video file not found on disk.")
+
+        cmd = [vlc_bin, str(video_path)]
+
+        # If subtitles provided, write temporary .srt with UTF-8 BOM so VLC displays Khmer text properly
+        if req.subtitles and len(req.subtitles) > 0:
+            sub_text = export_srt(req.subtitles, use_translated=True)
+            sub_file = AUDIO_CACHE_DIR / f"vlc_{uuid.uuid4().hex[:6]}.srt"
+            with open(sub_file, "w", encoding="utf-8-sig") as f:
+                f.write(sub_text)
+            cmd.append(f"--sub-file={str(sub_file)}")
+
+        subprocess.Popen(cmd)
+        return {
+            "status": "success",
+            "message": "Opened video in VLC Media Player"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -318,7 +415,8 @@ async def transcribe_audio(req: STTRequest):
         items, detected_lang = await transcribe_video_whisper(
             video_filename=req.video_filename,
             model_size=req.model_size,
-            language=req.language
+            language=req.language,
+            engine=getattr(req, "engine", "faster-whisper") or "faster-whisper"
         )
         
         # If auto-translate to Khmer is requested, translate batch

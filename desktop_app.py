@@ -112,6 +112,8 @@ def build_standalone_exe():
             "--add-data", f"models{os.pathsep}models",
             "--collect-all", "ai_edge_litert",
             "--copy-metadata", "ai-edge-litert",
+            "--collect-all", "faster_whisper",
+            "--collect-all", "ctranslate2",
             "--collect-data", "whisper",
             "--copy-metadata", "openai-whisper",
             "--copy-metadata", "tqdm",

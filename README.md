@@ -146,6 +146,32 @@ dist\MK-Subtitle-Studio\MK-Subtitle-Studio.exe
 
 ---
 
+## 🌟 Studio Features & Workflow Flowchart
+
+```mermaid
+graph LR
+    A["1. Upload Video\n(MP4, MKV, MOV, etc.)"] --> B["2. AI Whisper STT\n(Voice-to-Text)"]
+    B --> C["3. Gender Detection\n(Male vs Female F0 pitch)"]
+    C --> D["4. Google Translate\n(Khmer, English, etc.)"]
+    D --> E["5. Edge-TTS Dubbing\n(Auto Speed Time-Stretch)"]
+    E --> F["6. Timeline Synchronizer\n(Match waveform & video)"]
+    F --> G["7. Export Video\n(Burn Subtitles / MP4 / SRT)"]
+```
+
+| Feature | Description |
+| :--- | :--- |
+| **⚡ faster-whisper (CTranslate2)** | Ultra-fast STT engine with **4x speedup**, INT8 CPU/CUDA acceleration, Silero VAD filtering, and seamless OpenAI Whisper fallback. |
+| **🎛️ Smart BGM Auto-Ducking** | Dynamic FFmpeg sidechain compression that smoothly lowers background music/audio during speech and automatically restores full volume during pauses. |
+| **👥 Voice Gender Classification** | Analyzes fundamental vocal pitch (F0) to assign lines to **Male** or **Female** speakers automatically. |
+| **🌐 Free Instant Translation** | Translate subtitles instantly across 50+ languages (Khmer, English, Chinese, Vietnamese, Thai, Japanese, etc.) with rate-limiting safety. |
+| **🗣️ Multi-Voice Edge-TTS** | High quality neural TTS dubbing with automatic audio time-stretching so speech matches the duration of each subtitle line. |
+| **⏱️ Interactive Timeline** | Precision subtitle synchronization, waveform view, drag-to-resize, and split/merge lines. |
+| **🎞️ Hardsub Video Rendering** | Fast FFmpeg video encoding with customizable subtitle styling (font size, colors, outlines, bottom/top placement). |
+| **📁 Universal Export** | Export to `.srt`, `.vtt`, `.ass`, `.txt`, standalone dubbed `.mp3`, or hardsubbed `.mp4`. |
+| **⏳ Long-Form Video Support** | Efficient streaming and chunking handles short clips and long videos (1 hour+) without memory leaks. |
+
+---
+
 ## 📁 Project Directory Structure
 
 ```text

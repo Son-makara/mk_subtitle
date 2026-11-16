@@ -87,8 +87,23 @@ class VideoBurnRequest(BaseModel):
     primary_color: str = "&H00FFFF"
     outline_color: str = "&H000000"
     background_ducking_volume: float = 0.25
+    smart_ducking: bool = True
+    ducking_attack: int = 40
+    ducking_release: int = 350
     bgm_filename: Optional[str] = None
     bgm_volume: float = 0.3
+    bgm_crossfade: bool = True
+    bgm_fade_in: float = 2.0
+    bgm_fade_out: float = 3.0
+    enable_delogo: bool = False
+    delogo_mode: str = "blur"  # "blur", "black_bar"
+    delogo_area: str = "bottom_subtitles"  # "bottom_subtitles", "top_right", "top_left"
+    delogo_height_pct: float = 0.14
+    enable_anti_copyright: bool = False
+    anti_copyright_flip: bool = True
+    anti_copyright_zoom: float = 1.03
+    anti_copyright_color: bool = True
+    anti_copyright_speed: float = 1.03
     use_amf_gpu: bool = True
     add_logo_watermark: bool = False
     watermark_custom_path: Optional[str] = None
@@ -106,6 +121,7 @@ class STTRequest(BaseModel):
     video_filename: Optional[str] = None
     model_size: str = "base"
     language: Optional[str] = "auto"
+    engine: str = "faster-whisper"  # "faster-whisper" or "whisper"
     auto_translate_to_khmer: bool = True
 
 
@@ -116,6 +132,13 @@ class VideoConcatRequest(BaseModel):
     video_filenames: List[str]
     custom_output_filename: Optional[str] = None
     job_id: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
+
+class OpenVlcRequest(BaseModel):
+    video_filename: Optional[str] = None
+    subtitles: Optional[List[SubtitleItem]] = None
 
     class Config:
         extra = "ignore"

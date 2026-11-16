@@ -30,3 +30,13 @@ storage/exports/*
 .DS_Store
 Thumbs.db
 
+# AI Models & Large Binary Weights (>100MB)
+*.pt
+*.pth
+*.bin
+*.onnx
+models/**/*.pt
+models/**/*.pth
+models/**/*.bin
+
+

@@ -15,12 +15,17 @@ import {
   VolumeX,
   Music,
   Maximize2,
+  Minimize2,
+  Tv,
+  FastForward,
+  Rewind,
   Trash2,
   CheckCircle2,
   FolderOpen,
   FolderCheck,
   RefreshCw,
-  Sliders
+  Sliders,
+  Layers
 } from 'lucide-react';
 
 import SubtitleDataTable from './components/SubtitleDataTable';
@@ -87,6 +92,164 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [isAudioMutedToggle, setIsAudioMutedToggle] = useState(false); // Video audio mute toggle in Workspace Tools
+
+  // VLC Player Pro State & Handlers
+  const videoContainerRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const audioGainNodeRef = useRef(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [volumeLevel, setVolumeLevel] = useState(100); // 0 - 150% (VLC volume boost)
+  const [speedOsd, setSpeedOsd] = useState(null); // On-screen display text (e.g. '1.25x' or '150%')
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLaunchingVlc, setIsLaunchingVlc] = useState(false);
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const speedOsdTimer = useRef(null);
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  const triggerOsd = (text) => {
+    setSpeedOsd(text);
+    if (speedOsdTimer.current) clearTimeout(speedOsdTimer.current);
+    speedOsdTimer.current = setTimeout(() => {
+      setSpeedOsd(null);
+    }, 1200);
+  };
+
+  const handleSetSpeed = (newSpeed) => {
+    const clamped = Math.max(0.25, Math.min(3.0, parseFloat(Number(newSpeed).toFixed(2))));
+    setPlaybackSpeed(clamped);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = clamped;
+    }
+    triggerOsd(`⚡ ${clamped}x Speed`);
+  };
+
+  const handleCycleSpeed = () => {
+    const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+    const currIdx = speeds.indexOf(playbackSpeed);
+    const nextSpeed = currIdx === -1 ? 1.0 : speeds[(currIdx + 1) % speeds.length];
+    handleSetSpeed(nextSpeed);
+  };
+
+  const handleFrameStep = (deltaFrames) => {
+    if (!videoRef.current) return;
+    videoRef.current.pause();
+    setIsPlaying(false);
+    const frameTime = 1 / 25; // ~0.04s per frame
+    const newTime = Math.max(0, Math.min(videoDuration, videoRef.current.currentTime + (deltaFrames * frameTime)));
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+    triggerOsd(deltaFrames > 0 ? `⏭ +1 Frame` : `⏮ -1 Frame`);
+  };
+
+  const handleSeekRelative = (seconds) => {
+    if (!videoRef.current) return;
+    const newTime = Math.max(0, Math.min(videoDuration, videoRef.current.currentTime + seconds));
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+    triggerOsd(seconds > 0 ? `⏩ +${seconds}s` : `⏪ ${seconds}s`);
+  };
+
+  const handleVolumeChange = (newVal) => {
+    const val = Math.max(0, Math.min(150, parseInt(newVal)));
+    setVolumeLevel(val);
+    if (videoRef.current) {
+      if (val === 0) {
+        setIsVideoMuted(true);
+      } else if (isVideoMuted) {
+        setIsVideoMuted(false);
+      }
+      if (val <= 100) {
+        videoRef.current.volume = val / 100;
+        if (audioGainNodeRef.current) audioGainNodeRef.current.gain.value = 1.0;
+      } else {
+        videoRef.current.volume = 1.0;
+        if (!audioGainNodeRef.current) {
+          try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            const ctx = new AudioContext();
+            const source = ctx.createMediaElementSource(videoRef.current);
+            const gain = ctx.createGain();
+            source.connect(gain);
+            gain.connect(ctx.destination);
+            audioCtxRef.current = ctx;
+            audioGainNodeRef.current = gain;
+          } catch (e) {
+            console.warn('AudioContext boost setup error:', e);
+          }
+        }
+        if (audioGainNodeRef.current) {
+          if (audioCtxRef.current?.state === 'suspended') {
+            audioCtxRef.current.resume();
+          }
+          audioGainNodeRef.current.gain.value = val / 100;
+        }
+      }
+    }
+    triggerOsd(`🔊 ${val}% Volume`);
+  };
+
+  const handleToggleFullscreen = () => {
+    if (!videoContainerRef.current) return;
+    if (!document.fullscreenElement) {
+      videoContainerRef.current.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  const handleTogglePiP = async () => {
+    if (!videoRef.current) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureEnabled) {
+        await videoRef.current.requestPictureInPicture();
+      }
+    } catch (e) {
+      console.warn('PiP error:', e);
+    }
+  };
+
+  const handleOpenInVlc = async () => {
+    const filename = videoServerFilename || videoFilename;
+    if (!filename) {
+      setRenderToast({ type: 'error', message: 'No video loaded to open in VLC.' });
+      setTimeout(() => setRenderToast(null), 3500);
+      return;
+    }
+
+    setIsLaunchingVlc(true);
+    try {
+      const res = await fetch('/api/player/open-vlc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_filename: filename,
+          subtitles: subtitles
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        setRenderToast({ type: 'success', message: '🚀 Opened in VLC Media Player (with subtitles)!' });
+      } else if (data.status === 'not_installed') {
+        setRenderToast({ type: 'error', message: data.message || 'VLC not installed on PC.' });
+      } else {
+        setRenderToast({ type: 'error', message: data.detail || 'Could not open VLC.' });
+      }
+    } catch (err) {
+      setRenderToast({ type: 'error', message: `VLC Error: ${err.message}` });
+    } finally {
+      setIsLaunchingVlc(false);
+      setTimeout(() => setRenderToast(null), 4000);
+    }
+  };
 
   // Audio preview playback
   const currentAudioRef = useRef(null);
@@ -2056,7 +2219,61 @@ export default function App() {
               }
             })
           );
+          return;
+        } else {
+          // VLC Hotkey: Adjust Speed with [ and ]
+          e.preventDefault();
+          if (e.key === ']') {
+            handleSetSpeed(playbackSpeed + 0.25);
+          } else {
+            handleSetSpeed(playbackSpeed - 0.25);
+          }
+          return;
         }
+      }
+
+      // 16. VLC Hotkey: Toggle Fullscreen (F)
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        handleToggleFullscreen();
+        return;
+      }
+
+      // 17. VLC Hotkey: Toggle Mute (M)
+      if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        if (videoRef.current) {
+          const nextMute = !isVideoMuted;
+          videoRef.current.muted = nextMute;
+          setIsVideoMuted(nextMute);
+          triggerOsd(nextMute ? '🔇 Muted' : `🔊 ${volumeLevel}% Volume`);
+        }
+        return;
+      }
+
+      // 18. VLC Hotkey: Frame Step Backward (,)
+      if (e.key === ',' || e.key === '<') {
+        e.preventDefault();
+        handleFrameStep(-1);
+        return;
+      }
+
+      // 19. VLC Hotkey: Frame Step Forward (.)
+      if (e.key === '.' || e.key === '>') {
+        e.preventDefault();
+        handleFrameStep(1);
+        return;
+      }
+
+      // 20. VLC Hotkey: Jump Relative 3s (Left / Right Arrow)
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleSeekRelative(-3);
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleSeekRelative(3);
         return;
       }
     };
@@ -2166,7 +2383,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Project / Video Title */}
+            {/* Project / Video Title & VLC Quick Launcher */}
             <div
               style={{
                 fontSize: '11px',
@@ -2174,7 +2391,7 @@ export default function App() {
                 color: 'var(--text-bright)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                justifyContent: 'space-between',
                 backgroundColor: 'var(--bg-base)',
                 padding: '4px 8px',
                 borderRadius: '6px',
@@ -2182,27 +2399,64 @@ export default function App() {
                 flexShrink: 0
               }}
             >
-              <Film size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {videoFilename || 'No video loaded'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                <Film size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {videoFilename || 'No video loaded'}
+                </span>
+              </div>
+
+              {videoUrl && (
+                <button
+                  type="button"
+                  onClick={handleOpenInVlc}
+                  disabled={isLaunchingVlc}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 7px',
+                    borderRadius: '4px',
+                    border: '1px solid rgba(249, 115, 22, 0.45)',
+                    backgroundColor: 'rgba(249, 115, 22, 0.15)',
+                    color: '#fb923c',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Open video & current subtitles in desktop VLC Media Player"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                    <path d="m3 21 6.5-17a2 2 0 0 1 3.8 0L21 21" stroke="#f97316" strokeWidth="2.2" fill="#f97316" fillOpacity="0.35" />
+                    <path d="M5.5 16h13" stroke="#ffffff" strokeWidth="2.2" />
+                    <path d="M8 10h8" stroke="#ffffff" strokeWidth="2.2" />
+                  </svg>
+                  <span>{isLaunchingVlc ? 'Launching...' : 'VLC Player'}</span>
+                </button>
+              )}
             </div>
 
-            {/* Video Canvas Box with Clean State */}
+            {/* Video Canvas Box with VLC Double-click Fullscreen & OSD */}
             <div
+              ref={videoContainerRef}
+              onDoubleClick={handleToggleFullscreen}
               style={{
                 aspectRatio: '16/9',
-                maxHeight: '170px',
+                maxHeight: isFullscreen ? 'none' : '170px',
                 backgroundColor: '#000',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
+                borderRadius: isFullscreen ? '0' : '8px',
+                border: isFullscreen ? 'none' : '1px solid var(--border-color)',
                 overflow: 'hidden',
                 position: 'relative',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                flexShrink: 0
+                flexShrink: 0,
+                cursor: videoUrl ? 'pointer' : 'default'
               }}
+              title={videoUrl ? "Double-click to toggle Fullscreen (F)" : ""}
             >
               {videoUrl ? (
                 <>
@@ -2215,10 +2469,98 @@ export default function App() {
                       if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
                     }}
                     onLoadedMetadata={() => {
-                      if (videoRef.current) setVideoDuration(videoRef.current.duration);
+                      if (videoRef.current) {
+                        setVideoDuration(videoRef.current.duration);
+                        videoRef.current.playbackRate = playbackSpeed;
+                      }
                     }}
                     onClick={togglePlay}
                   />
+
+                  {/* VLC On-Screen Display (OSD) Badge */}
+                  {speedOsd && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '10px',
+                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                        border: '1px solid rgba(249, 115, 22, 0.6)',
+                        color: '#fb923c',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        letterSpacing: '0.5px',
+                        zIndex: 10,
+                        pointerEvents: 'none',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.6)'
+                      }}
+                    >
+                      {speedOsd}
+                    </div>
+                  )}
+
+                  {/* Top-left Quick PiP & Fullscreen Hover Buttons */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '6px',
+                      left: '6px',
+                      display: 'flex',
+                      gap: '4px',
+                      zIndex: 8,
+                      opacity: 0.75,
+                      transition: 'opacity 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.75')}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleTogglePiP();
+                      }}
+                      style={{
+                        padding: '2px 5px',
+                        backgroundColor: 'rgba(0,0,0,0.65)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: '3px',
+                        color: '#cbd5e1',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '9px',
+                        gap: '2px'
+                      }}
+                      title="Picture-in-Picture Floating Window"
+                    >
+                      <Tv size={10} />
+                      <span>PiP</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleFullscreen();
+                      }}
+                      style={{
+                        padding: '2px 5px',
+                        backgroundColor: 'rgba(0,0,0,0.65)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: '3px',
+                        color: '#cbd5e1',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '9px'
+                      }}
+                      title="Fullscreen (F)"
+                    >
+                      {isFullscreen ? <Minimize2 size={10} /> : <Maximize2 size={10} />}
+                    </button>
+                  </div>
 
                   {/* Subtitle Overlay with Live Preview of Size, Position & Style */}
                   {activeSub && subSettings.subtitleMode !== 'none' && (
@@ -2334,13 +2676,14 @@ export default function App() {
                 }}
               />
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px', gap: '4px', flexWrap: 'wrap' }}>
+                {/* Left VLC Playback Controls: Play, Stop, Frame-step, Jump */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                   <button
                     onClick={togglePlay}
                     className="btn-secondary"
-                    style={{ padding: '3px 7px' }}
-                    title={isPlaying ? 'Pause' : 'Play'}
+                    style={{ padding: '3px 6px' }}
+                    title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
                     disabled={!videoUrl}
                   >
                     {isPlaying ? <Pause size={12} /> : <Play size={12} />}
@@ -2348,15 +2691,75 @@ export default function App() {
                   <button
                     onClick={stopVideo}
                     className="btn-secondary"
-                    style={{ padding: '3px 7px' }}
+                    style={{ padding: '3px 6px' }}
                     title="Stop"
                     disabled={!videoUrl}
                   >
                     <Square size={11} />
                   </button>
+
+                  {/* Frame-by-Frame Step (-1f / +1f) */}
+                  <button
+                    onClick={() => handleFrameStep(-1)}
+                    className="btn-secondary"
+                    style={{ padding: '3px 5px', fontSize: '10px' }}
+                    title="Step backward 1 frame (,)"
+                    disabled={!videoUrl}
+                  >
+                    ⏮
+                  </button>
+                  <button
+                    onClick={() => handleFrameStep(1)}
+                    className="btn-secondary"
+                    style={{ padding: '3px 5px', fontSize: '10px' }}
+                    title="Step forward 1 frame (.)"
+                    disabled={!videoUrl}
+                  >
+                    ⏭
+                  </button>
+
+                  {/* Jump -3s / +3s */}
+                  <button
+                    onClick={() => handleSeekRelative(-3)}
+                    className="btn-secondary"
+                    style={{ padding: '3px 5px', fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)' }}
+                    title="Jump back 3 seconds (Left Arrow)"
+                    disabled={!videoUrl}
+                  >
+                    -3s
+                  </button>
+                  <button
+                    onClick={() => handleSeekRelative(3)}
+                    className="btn-secondary"
+                    style={{ padding: '3px 5px', fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)' }}
+                    title="Jump forward 3 seconds (Right Arrow)"
+                    disabled={!videoUrl}
+                  >
+                    +3s
+                  </button>
                 </div>
 
+                {/* Right Controls: Speed, Subs, VLC Volume (0-150%), Fullscreen */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {/* VLC Playback Speed Switcher */}
+                  <button
+                    onClick={handleCycleSpeed}
+                    className="btn-secondary"
+                    style={{
+                      padding: '3px 6px',
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      color: playbackSpeed !== 1.0 ? '#fb923c' : 'var(--text-muted)',
+                      borderColor: playbackSpeed !== 1.0 ? 'rgba(249, 115, 22, 0.4)' : 'var(--border-color)',
+                      backgroundColor: playbackSpeed !== 1.0 ? 'rgba(249, 115, 22, 0.1)' : 'transparent'
+                    }}
+                    title="VLC Speed: Click to cycle [0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x]"
+                    disabled={!videoUrl}
+                  >
+                    <span>{playbackSpeed}x</span>
+                  </button>
+
+                  {/* Subtitle Styling Shortcut */}
                   <button
                     onClick={() => {
                       setExportType('burn');
@@ -2364,11 +2767,11 @@ export default function App() {
                     }}
                     className="btn-secondary"
                     style={{
-                      padding: '3px 7px',
+                      padding: '3px 6px',
                       fontSize: '10px',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px',
+                      gap: '3px',
                       color: subSettings.subtitleMode === 'none' ? 'var(--text-muted)' : '#f59e0b',
                       borderColor: subSettings.subtitleMode === 'none' ? 'var(--border-color)' : 'rgba(245, 158, 11, 0.4)'
                     }}
@@ -2378,18 +2781,89 @@ export default function App() {
                     <span>Subs ({subSettings.subtitleMode === 'none' ? 'Off' : `${subSettings.fontSize}px`})</span>
                   </button>
 
+                  {/* VLC Volume Boost (0% - 150%) */}
+                  <div
+                    style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                    onMouseEnter={() => setShowVolumeSlider(true)}
+                    onMouseLeave={() => setShowVolumeSlider(false)}
+                  >
+                    <button
+                      onClick={() => {
+                        if (videoRef.current) {
+                          const nextMute = !isVideoMuted;
+                          videoRef.current.muted = nextMute;
+                          setIsVideoMuted(nextMute);
+                          triggerOsd(nextMute ? '🔇 Muted' : `🔊 ${volumeLevel}% Volume`);
+                        }
+                      }}
+                      className="btn-secondary"
+                      style={{
+                        padding: '3px 6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        color: volumeLevel > 100 ? '#fb923c' : 'inherit',
+                        borderColor: volumeLevel > 100 ? 'rgba(249, 115, 22, 0.4)' : 'var(--border-color)'
+                      }}
+                      title={`Volume: ${volumeLevel}% (Scroll or hover to adjust, boost up to 150%)`}
+                      disabled={!videoUrl}
+                    >
+                      {isVideoMuted || volumeLevel === 0 ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      <span style={{ fontSize: '9px', fontWeight: 600 }}>{volumeLevel}%</span>
+                    </button>
+
+                    {/* Popover Volume Slider */}
+                    {showVolumeSlider && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: '100%',
+                          right: 0,
+                          backgroundColor: 'var(--bg-base)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          padding: '8px 10px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          zIndex: 20,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                          width: '120px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-muted)' }}>
+                          <span>Volume:</span>
+                          <span style={{ color: volumeLevel > 100 ? '#fb923c' : '#34d399', fontWeight: 700 }}>
+                            {volumeLevel}% {volumeLevel > 100 && '⚡ Boost'}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="150"
+                          step="5"
+                          value={volumeLevel}
+                          onChange={(e) => handleVolumeChange(e.target.value)}
+                          style={{
+                            width: '100%',
+                            accentColor: volumeLevel > 100 ? '#fb923c' : 'var(--accent-primary)',
+                            cursor: 'pointer',
+                            height: '4px'
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Fullscreen Button */}
                   <button
-                    onClick={() => {
-                      if (videoRef.current) {
-                        videoRef.current.muted = !isVideoMuted;
-                        setIsVideoMuted(!isVideoMuted);
-                      }
-                    }}
+                    onClick={handleToggleFullscreen}
                     className="btn-secondary"
-                    style={{ padding: '3px 7px' }}
+                    style={{ padding: '3px 6px' }}
+                    title={isFullscreen ? 'Exit Fullscreen (F)' : 'Fullscreen (F)'}
                     disabled={!videoUrl}
                   >
-                    {isVideoMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                    {isFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
                   </button>
                 </div>
               </div>
@@ -2433,8 +2907,8 @@ export default function App() {
                 )}
               </div>
 
-              {/* 2-Column Buttons: Export SRT & Import SRT */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+              {/* 3-Column Buttons: Export SRT, Import SRT, Merge Files */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
                 {/* 1. Export SRT */}
                 <button
                   onClick={handleExportSRT}
@@ -2443,11 +2917,11 @@ export default function App() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '6px',
+                    gap: '4px',
                     backgroundColor: 'var(--bg-hover)',
                     border: '1px solid var(--border-light)',
                     borderRadius: '8px',
-                    padding: '8px 6px',
+                    padding: '8px 4px',
                     cursor: subtitles.length === 0 ? 'not-allowed' : 'pointer',
                     opacity: subtitles.length === 0 ? 0.6 : 1,
                     color: 'var(--text-primary)',
@@ -2457,8 +2931,8 @@ export default function App() {
                   }}
                   title="Export SRT asking where to save"
                 >
-                  <Download size={14} style={{ color: '#06b6d4' }} />
-                  <span>Export SRT</span>
+                  <Download size={13} style={{ color: '#06b6d4' }} />
+                  <span>Export</span>
                 </button>
 
                 {/* 2. Import Subtitles (SRT) */}
@@ -2467,11 +2941,11 @@ export default function App() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '6px',
+                    gap: '4px',
                     backgroundColor: 'var(--bg-hover)',
                     border: '1px solid var(--border-light)',
                     borderRadius: '8px',
-                    padding: '8px 6px',
+                    padding: '8px 4px',
                     cursor: 'pointer',
                     fontSize: '11px',
                     fontWeight: 500,
@@ -2489,9 +2963,36 @@ export default function App() {
                       }
                     }}
                   />
-                  <FileText size={14} style={{ color: '#f59e0b' }} />
-                  <span>Import SRT</span>
+                  <FileText size={13} style={{ color: '#f59e0b' }} />
+                  <span>Import</span>
                 </label>
+
+                {/* 3. Merge Video Files */}
+                <button
+                  onClick={() => {
+                    setExportType('merge');
+                    setExportModalOpen(true);
+                  }}
+                  className="btn-secondary"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    padding: '8px 4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    color: '#38bdf8',
+                    borderColor: 'rgba(56, 189, 248, 0.35)',
+                    backgroundColor: 'rgba(56, 189, 248, 0.08)'
+                  }}
+                  title="Select and merge multiple video files into 1 video"
+                >
+                  <Layers size={13} style={{ color: '#38bdf8' }} />
+                  <span>Merge</span>
+                </button>
               </div>
             </div>
 

@@ -6,14 +6,17 @@ export default function ShortcutsModal({ isOpen, onClose }) {
 
   const shortcutSections = [
     {
-      title: '🎬 Video Playback & Navigation',
+      title: '🎬 VLC Playback & Navigation',
       shortcuts: [
         { keys: ['Space'], desc: 'Play / Pause video' },
-        { keys: ['←', '→'], desc: 'Step 0.1s (hold Shift for 1.0s)' },
+        { keys: ['F'], desc: 'Toggle Fullscreen cinema mode', highlight: true },
+        { keys: ['M'], desc: 'Toggle Mute / Unmute' },
+        { keys: [','], desc: 'Frame step backward (-1 frame ~0.04s)' },
+        { keys: ['.'], desc: 'Frame step forward (+1 frame ~0.04s)' },
+        { keys: ['←', '→'], desc: 'Jump 3 seconds backward / forward' },
+        { keys: ['[', ']'], desc: 'Decrease / Increase playback speed (or sub timing)' },
         { keys: ['Ctrl', 'Space'], desc: 'Play audio of selected subtitle line' },
-        { keys: ['P'], desc: 'Preview Khmer AI Voice for selected line' },
-        { keys: ['Home', 'End'], desc: 'Jump to beginning / end of video' },
-        { keys: ['L'], desc: 'Toggle A-B loop playback on selected item' }
+        { keys: ['P'], desc: 'Preview Khmer AI Voice for selected line' }
       ]
     },
     {

@@ -14,6 +14,7 @@ export default function AIModal({
 }) {
   // Whisper settings
   const [modelSize, setModelSize] = useState('base');
+  const [engine, setEngine] = useState('faster-whisper');
   const [whisperLang, setWhisperLang] = useState('auto');
   const [autoTranslateKhmer, setAutoTranslateKhmer] = useState(true);
 
@@ -118,6 +119,58 @@ export default function AIModal({
                 </label>
               </div>
             )}
+
+            <div>
+              <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
+                Transcription AI Engine:
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEngine('faster-whisper')}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${engine === 'faster-whisper' ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                    backgroundColor: engine === 'faster-whisper' ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-tertiary)',
+                    color: engine === 'faster-whisper' ? '#fff' : 'var(--text-muted)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>⚡ faster-whisper</span>
+                    <span style={{ fontSize: '9px', backgroundColor: '#059669', color: '#fff', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>4x Fast</span>
+                  </div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                    CTranslate2 INT8/GPU + VAD filter
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEngine('whisper')}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${engine === 'whisper' ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                    backgroundColor: engine === 'whisper' ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-tertiary)',
+                    color: engine === 'whisper' ? '#fff' : 'var(--text-muted)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left'
+                  }}
+                >
+                  <div>OpenAI Whisper</div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                    Standard PyTorch offline engine
+                  </div>
+                </button>
+              </div>
+            </div>
 
             <div>
               <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
@@ -227,6 +280,7 @@ export default function AIModal({
                 onClick={() =>
                   onStartWhisper({
                     model_size: modelSize,
+                    engine: engine,
                     language: whisperLang,
                     auto_translate_to_khmer: autoTranslateKhmer
                   })

@@ -179,34 +179,81 @@ def _ensure_whisper_assets_patched():
     import whisper.audio
     import whisper.tokenizer
     import torch
+    import shutil
     from ..config import BASE_DIR
 
     candidate_asset_dirs = [
         os.path.join(os.path.dirname(whisper.__file__), "assets"),
+        os.path.join(str(BASE_DIR), "models", "whisper", "assets"),
+        os.path.join(str(BASE_DIR), "..", "models", "whisper", "assets"),
         os.path.join(str(BASE_DIR), "_internal", "whisper", "assets"),
         os.path.join(str(BASE_DIR), "whisper", "assets"),
-        os.path.join(getattr(sys, "_MEIPASS", ""), "whisper", "assets")
+        os.path.join(getattr(sys, "_MEIPASS", ""), "whisper", "assets"),
+        os.path.join(getattr(sys, "_MEIPASS", ""), "_internal", "whisper", "assets"),
+        os.path.join(str(Path(sys.executable).parent), "models", "whisper", "assets"),
+        os.path.join(str(Path(__file__).resolve().parents[3]), "models", "whisper", "assets"),
+        os.path.join(str(Path.cwd()), "models", "whisper", "assets"),
     ]
+
+    try:
+        import site
+        for sp in site.getsitepackages():
+            candidate_asset_dirs.append(os.path.join(sp, "whisper", "assets"))
+    except Exception:
+        pass
 
     valid_asset_dir = None
     for d in candidate_asset_dirs:
-        if d and os.path.exists(os.path.join(d, "mel_filters.npz")):
-            valid_asset_dir = d
-            break
+        if d and os.path.exists(d):
+            if os.path.exists(os.path.join(d, "multilingual.tiktoken")) or os.path.exists(os.path.join(d, "mel_filters.npz")):
+                valid_asset_dir = d
+                break
+
+    # AUTO-HEALING: If valid_asset_dir is found, copy missing assets to whisper's module directory and _internal
+    if valid_asset_dir:
+        target_dirs = [
+            os.path.join(os.path.dirname(whisper.__file__), "assets"),
+            os.path.join(str(BASE_DIR), "_internal", "whisper", "assets")
+        ]
+        for target_dir in target_dirs:
+            try:
+                if target_dir and os.path.abspath(target_dir) != os.path.abspath(valid_asset_dir):
+                    os.makedirs(target_dir, exist_ok=True)
+                    for item in os.listdir(valid_asset_dir):
+                        src_item = os.path.join(valid_asset_dir, item)
+                        dst_item = os.path.join(target_dir, item)
+                        if os.path.isfile(src_item) and not os.path.exists(dst_item):
+                            try:
+                                shutil.copy2(src_item, dst_item)
+                            except Exception:
+                                pass
+            except Exception:
+                pass
 
     orig_mel = whisper.audio.mel_filters
 
     def robust_mel_filters(device, n_mels: int):
         try:
             return orig_mel(device, n_mels)
-        except (FileNotFoundError, OSError):
-            if valid_asset_dir:
-                p = os.path.join(valid_asset_dir, "mel_filters.npz")
-                with np.load(p, allow_pickle=False) as f:
-                    return torch.from_numpy(f[f"mel_{n_mels}"]).to(device)
-            import librosa
-            weights = librosa.filters.mel(sr=16000, n_fft=400, n_mels=n_mels)
-            return torch.from_numpy(weights).to(device)
+        except Exception:
+            search_dirs = [valid_asset_dir] if valid_asset_dir else []
+            search_dirs.extend([
+                os.path.join(os.path.dirname(whisper.__file__), "assets"),
+                os.path.join(str(BASE_DIR), "models", "whisper", "assets"),
+                os.path.join(str(BASE_DIR), "_internal", "whisper", "assets"),
+            ])
+            for d in search_dirs:
+                if d and os.path.exists(d):
+                    p = os.path.join(d, "mel_filters.npz")
+                    if os.path.exists(p):
+                        with np.load(p, allow_pickle=False) as f:
+                            return torch.from_numpy(f[f"mel_{n_mels}"]).to(device)
+            try:
+                import librosa
+                weights = librosa.filters.mel(sr=16000, n_fft=400, n_mels=n_mels)
+                return torch.from_numpy(weights).to(device)
+            except Exception:
+                raise
 
     whisper.audio.mel_filters = robust_mel_filters
 
@@ -215,45 +262,172 @@ def _ensure_whisper_assets_patched():
     def robust_get_encoding(name: str = "gpt2", num_languages: int = 99):
         try:
             return orig_get_encoding(name=name, num_languages=num_languages)
-        except (FileNotFoundError, OSError):
-            if valid_asset_dir:
-                vocab_path = os.path.join(valid_asset_dir, f"{name}.tiktoken")
-                if os.path.exists(vocab_path):
-                    import base64, tiktoken
-                    from whisper.tokenizer import LANGUAGES
-                    ranks = {
-                        base64.b64decode(token): int(rank)
-                        for token, rank in (line.split() for line in open(vocab_path, "r", encoding="utf-8") if line)
-                    }
-                    n_vocab = len(ranks)
-                    special_tokens = {}
-                    specials = [
-                        "<|endoftext|>",
-                        "<|startoftranscript|>",
-                        *[f"<|{lang}|>" for lang in list(LANGUAGES.keys())[:num_languages]],
-                        "<|translate|>",
-                        "<|transcribe|>",
-                        "<|startoflm|>",
-                        "<|startofprev|>",
-                        "<|nospeech|>",
-                        "<|notimestamps|>",
-                        *[f"<|{i * 0.02:.2f}|>" for i in range(1501)],
-                    ]
-                    for token in specials:
-                        special_tokens[token] = n_vocab
-                        n_vocab += 1
-                    return tiktoken.Encoding(
-                        name=os.path.basename(vocab_path),
-                        explicit_n_vocab=n_vocab,
-                        pat_str=r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""",
-                        mergeable_ranks=ranks,
-                        special_tokens=special_tokens,
-                    )
+        except Exception:
+            search_dirs = [valid_asset_dir] if valid_asset_dir else []
+            search_dirs.extend([
+                os.path.join(os.path.dirname(whisper.__file__), "assets"),
+                os.path.join(str(BASE_DIR), "models", "whisper", "assets"),
+                os.path.join(str(BASE_DIR), "..", "models", "whisper", "assets"),
+                os.path.join(str(BASE_DIR), "_internal", "whisper", "assets"),
+                os.path.join(str(Path(sys.executable).parent), "models", "whisper", "assets"),
+                os.path.join(str(Path(__file__).resolve().parents[3]), "models", "whisper", "assets"),
+                os.path.join(str(Path.cwd()), "models", "whisper", "assets"),
+            ])
+            for d in search_dirs:
+                if d and os.path.exists(d):
+                    vocab_path = os.path.join(d, f"{name}.tiktoken")
+                    if os.path.exists(vocab_path):
+                        import base64, tiktoken
+                        from whisper.tokenizer import LANGUAGES
+                        ranks = {
+                            base64.b64decode(token): int(rank)
+                            for token, rank in (line.split() for line in open(vocab_path, "r", encoding="utf-8") if line)
+                        }
+                        n_vocab = len(ranks)
+                        special_tokens = {}
+                        specials = [
+                            "<|endoftext|>",
+                            "<|startoftranscript|>",
+                            *[f"<|{lang}|>" for lang in list(LANGUAGES.keys())[:num_languages]],
+                            "<|translate|>",
+                            "<|transcribe|>",
+                            "<|startoflm|>",
+                            "<|startofprev|>",
+                            "<|nospeech|>",
+                            "<|notimestamps|>",
+                            *[f"<|{i * 0.02:.2f}|>" for i in range(1501)],
+                        ]
+                        for token in specials:
+                            special_tokens[token] = n_vocab
+                            n_vocab += 1
+                        return tiktoken.Encoding(
+                            name=os.path.basename(vocab_path),
+                            explicit_n_vocab=n_vocab,
+                            pat_str=r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""",
+                            mergeable_ranks=ranks,
+                            special_tokens=special_tokens,
+                        )
             raise
 
     whisper.tokenizer.get_encoding = robust_get_encoding
 
-def run_whisper_transcribe_sync(
+# Cached faster-whisper models
+_FASTER_WHISPER_MODELS = {}
+
+def _patch_av_open():
+    """Patches av.open to gracefully handle PyAV 19+ metadata_errors keyword removal"""
+    try:
+        import av
+        if not getattr(av, "_mk_patched", False):
+            orig_av_open = av.open
+            def robust_av_open(*args, **kwargs):
+                try:
+                    return orig_av_open(*args, **kwargs)
+                except TypeError as err:
+                    if "metadata_errors" in kwargs or "metadata_errors" in str(err):
+                        kwargs.pop("metadata_errors", None)
+                        return orig_av_open(*args, **kwargs)
+                    raise
+            av.open = robust_av_open
+            av._mk_patched = True
+    except Exception:
+        pass
+
+def run_faster_whisper_transcribe_sync(
+    audio_path: str,
+    model_size: str = "base",
+    language: Optional[str] = None
+) -> Tuple[List[SubtitleItem], str]:
+    """
+    High-speed CTranslate2-based Whisper transcription (4x faster, lower memory,
+    with Silero VAD noise filtering and automatic CUDA / INT8 CPU acceleration).
+    """
+    _patch_av_open()
+    from faster_whisper import WhisperModel
+    import ctranslate2
+
+    global _FASTER_WHISPER_MODELS
+    chosen_model = model_size if model_size in ["tiny", "base", "small", "medium", "large-v3"] else "base"
+
+    has_cuda = ctranslate2.get_cuda_device_count() > 0
+    device = "cuda" if has_cuda else "cpu"
+    compute_type = "float16" if has_cuda else "int8"
+    cache_key = f"{chosen_model}_{device}_{compute_type}"
+
+    if cache_key not in _FASTER_WHISPER_MODELS:
+        print(f"Loading faster-whisper model '{chosen_model}' on {device} ({compute_type})...")
+        _FASTER_WHISPER_MODELS[cache_key] = WhisperModel(
+            chosen_model,
+            device=device,
+            compute_type=compute_type,
+            cpu_threads=max(1, (os.cpu_count() or 4) - 1)
+        )
+
+    model = _FASTER_WHISPER_MODELS[cache_key]
+
+    # Read extracted audio for voice pitch / gender classification
+    full_audio = None
+    sample_rate = 16000
+    try:
+        import soundfile as sf
+        full_audio, sample_rate = sf.read(audio_path)
+    except Exception as e:
+        print(f"Warning: could not read audio for gender classification: {e}")
+
+    lang_param = None if (not language or language == "auto") else language
+    segments, info = model.transcribe(
+        audio_path,
+        language=lang_param,
+        word_timestamps=True,
+        beam_size=5,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500)
+    )
+
+    detected_language = info.language or (language if language and language != "auto" else "auto")
+
+    items = []
+    idx = 1
+    for seg in segments:
+        txt = (seg.text or "").strip()
+        if not txt:
+            continue
+
+        words = getattr(seg, "words", None)
+        if words and len(words) > 0:
+            start_t = round(float(words[0].start), 3)
+            end_t = round(float(words[-1].end), 3)
+        else:
+            start_t = round(float(seg.start), 3)
+            end_t = round(float(seg.end), 3)
+
+        if end_t <= start_t:
+            end_t = round(start_t + 0.8, 3)
+
+        detected_gender = "Female"
+        if full_audio is not None and len(full_audio) > 0:
+            idx_start = max(0, int(start_t * sample_rate))
+            idx_end = min(len(full_audio), int(end_t * sample_rate))
+            if idx_end > idx_start:
+                slice_audio = full_audio[idx_start:idx_end]
+                detected_gender = detect_voice_gender(slice_audio, sample_rate)
+
+        items.append(
+            SubtitleItem(
+                id=str(uuid.uuid4())[:8],
+                index=idx,
+                start_time=start_t,
+                end_time=end_t,
+                text=txt,
+                gender=detected_gender,
+                speaker=f"{detected_gender} Speaker",
+            )
+        )
+        idx += 1
+
+    return items, detected_language
+
+def _run_standard_whisper_sync(
     audio_path: str,
     model_size: str = "base",
     language: Optional[str] = None
@@ -265,7 +439,7 @@ def run_whisper_transcribe_sync(
     chosen_model = model_size if model_size in ["tiny", "base", "small", "medium"] else "base"
     
     if chosen_model not in _WHISPER_MODELS:
-        print(f"Loading Whisper model '{chosen_model}' onto CPU...")
+        print(f"Loading standard Whisper model '{chosen_model}' onto CPU...")
         try:
             _WHISPER_MODELS[chosen_model] = whisper.load_model(chosen_model, device="cpu")
         except Exception as e:
@@ -305,7 +479,6 @@ def run_whisper_transcribe_sync(
         if not txt:
             continue
 
-        # Use exact word boundary timestamps when available to synchronize voice on video
         words = seg.get("words", [])
         if words and len(words) > 0:
             start_t = round(float(words[0].get("start", seg.get("start", 0.0))), 3)
@@ -317,7 +490,6 @@ def run_whisper_transcribe_sync(
         if end_t <= start_t:
             end_t = round(start_t + 0.8, 3)
 
-        # Detect voice gender (Male / Female) from the audio segment
         detected_gender = "Female"
         if full_audio is not None and len(full_audio) > 0:
             idx_start = max(0, int(start_t * sample_rate))
@@ -339,10 +511,29 @@ def run_whisper_transcribe_sync(
         )
     return items, detected_language
 
+def run_whisper_transcribe_sync(
+    audio_path: str,
+    model_size: str = "base",
+    language: Optional[str] = None,
+    engine: str = "faster-whisper"
+) -> Tuple[List[SubtitleItem], str]:
+    """
+    Transcribes audio using faster-whisper by default (4x faster CTranslate2)
+    with seamless automatic fallback to standard OpenAI Whisper.
+    """
+    if engine == "faster-whisper":
+        try:
+            return run_faster_whisper_transcribe_sync(audio_path, model_size, language)
+        except Exception as e:
+            print(f"faster-whisper notice ({e}), falling back to standard Whisper...")
+
+    return _run_standard_whisper_sync(audio_path, model_size, language)
+
 async def transcribe_video_whisper(
     video_filename: Optional[str] = None,
     model_size: str = "base",
-    language: Optional[str] = None
+    language: Optional[str] = None,
+    engine: str = "faster-whisper"
 ):
     video_path = resolve_media_file(video_filename)
 
@@ -354,7 +545,7 @@ async def transcribe_video_whisper(
             raise RuntimeError(f"Failed to extract audio stream from {video_path.name}.")
 
         items, detected_lang = await loop.run_in_executor(
-            None, run_whisper_transcribe_sync, str(temp_wav), model_size, language
+            None, run_whisper_transcribe_sync, str(temp_wav), model_size, language, engine
         )
         return items, detected_lang
     finally:
