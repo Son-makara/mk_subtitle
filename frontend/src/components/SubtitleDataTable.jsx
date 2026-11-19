@@ -341,19 +341,19 @@ export default function SubtitleDataTable({
                   alignItems: 'center',
                   gap: '6px',
                   borderRadius: '6px',
-                  border: ttsEngine === 'edge-tts' ? '1px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.3)',
+                  border: ttsEngine === 'edge-tts' ? '1px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.4)',
                   backgroundColor: isGeneratingAudio && ttsEngine === 'edge-tts'
                     ? '#1d4ed8'
                     : ttsEngine === 'edge-tts'
                     ? '#2563eb'
-                    : 'rgba(37, 99, 235, 0.15)',
+                    : 'rgba(37, 99, 235, 0.2)',
                   color: '#ffffff',
                   cursor: isGeneratingAudio || subtitles.length === 0 ? 'not-allowed' : 'pointer',
                   opacity: isGeneratingAudio || subtitles.length === 0 ? 0.65 : 1,
-                  boxShadow: ttsEngine === 'edge-tts' ? '0 2px 8px rgba(37, 99, 235, 0.35)' : 'none',
+                  boxShadow: ttsEngine === 'edge-tts' ? '0 2px 8px rgba(37, 99, 235, 0.4)' : 'none',
                   transition: 'all 0.15s ease'
                 }}
-                title="Microsoft Cloud Neural Voice (Piseth & Sreymom Natural Studio Voice) - 100% Online Only"
+                title="Microsoft Cloud Neural Voice (Piseth & Sreymom) - Natural studio quality, highly recommended!"
               >
                 {isGeneratingAudio && ttsEngine === 'edge-tts' ? (
                   <Loader2 size={13} className="animate-spin" />
@@ -361,10 +361,10 @@ export default function SubtitleDataTable({
                   <Volume2 size={13} />
                 )}
                 <span>
-                  🌐 Online ({selectedIds.length > 0 && selectedIds.length < subtitles.length ? selectedIds.length : subtitles.length})
+                  🌐 Piseth / Sreymom ({selectedIds.length > 0 && selectedIds.length < subtitles.length ? selectedIds.length : subtitles.length})
                 </span>
-                <span style={{ fontSize: '9px', opacity: 0.9, padding: '1px 4px', borderRadius: '3px', backgroundColor: 'rgba(0,0,0,0.25)' }}>
-                  Cloud
+                <span style={{ fontSize: '9px', opacity: 0.95, padding: '1px 5px', borderRadius: '3px', backgroundColor: 'rgba(0,0,0,0.3)', fontWeight: 700, color: '#93c5fd' }}>
+                  Best
                 </span>
               </button>
 
@@ -377,26 +377,25 @@ export default function SubtitleDataTable({
                 }}
                 disabled={isGeneratingAudio || subtitles.length === 0}
                 style={{
-                  padding: '6px 12px',
+                  padding: '6px 10px',
                   fontSize: '11px',
-                  fontWeight: 600,
+                  fontWeight: 500,
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: '5px',
                   borderRadius: '6px',
-                  border: ttsEngine === 'mms-offline' ? '1px solid #10b981' : '1px solid rgba(16, 185, 129, 0.3)',
+                  border: ttsEngine === 'mms-offline' ? '1px solid #10b981' : '1px solid rgba(16, 185, 129, 0.2)',
                   backgroundColor: isGeneratingAudio && ttsEngine === 'mms-offline'
                     ? '#047857'
                     : ttsEngine === 'mms-offline'
                     ? '#059669'
-                    : 'rgba(16, 185, 129, 0.15)',
-                  color: '#ffffff',
+                    : 'rgba(16, 185, 129, 0.08)',
+                  color: ttsEngine === 'mms-offline' ? '#ffffff' : '#6ee7b7',
                   cursor: isGeneratingAudio || subtitles.length === 0 ? 'not-allowed' : 'pointer',
-                  opacity: isGeneratingAudio || subtitles.length === 0 ? 0.65 : 1,
-                  boxShadow: ttsEngine === 'mms-offline' ? '0 2px 8px rgba(16, 185, 129, 0.35)' : 'none',
+                  opacity: isGeneratingAudio || subtitles.length === 0 ? 0.65 : 0.85,
                   transition: 'all 0.15s ease'
                 }}
-                title="Meta MMS-TTS Khmer (100% Offline, runs locally on your PC, No Internet Needed)"
+                title="Meta MMS-TTS Khmer (100% Offline, runs locally on PC - Robotic fallback)"
               >
                 {isGeneratingAudio && ttsEngine === 'mms-offline' ? (
                   <Loader2 size={13} className="animate-spin" />
@@ -406,8 +405,8 @@ export default function SubtitleDataTable({
                 <span>
                   ⚡ Offline ({selectedIds.length > 0 && selectedIds.length < subtitles.length ? selectedIds.length : subtitles.length})
                 </span>
-                <span style={{ fontSize: '9px', opacity: 0.9, padding: '1px 4px', borderRadius: '3px', backgroundColor: 'rgba(0,0,0,0.25)' }}>
-                  Local
+                <span style={{ fontSize: '9px', opacity: 0.75, padding: '1px 4px', borderRadius: '3px', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+                  Robotic
                 </span>
               </button>
             </div>
@@ -422,24 +421,24 @@ export default function SubtitleDataTable({
                   gap: '3px'
                 }}
               >
-                <Users size={13} /> Set voices:
+                <Users size={13} /> Set all:
               </span>
               <button
                 type="button"
                 onClick={() => onSetAllVoices('Male')}
                 className="btn-secondary"
                 style={{ padding: '2px 8px', fontSize: '10px', color: '#818cf8', borderColor: '#334155' }}
-                title="Set all voice profiles to Male"
+                title="Set all voice profiles to Piseth (Male)"
               >
-                Male
+                Piseth (Male)
               </button>
               <button
                 onClick={() => onSetAllVoices('Female')}
                 className="btn-secondary"
                 style={{ padding: '2px 8px', fontSize: '10px', color: '#f472b6', borderColor: '#334155' }}
-                title="Set all voice profiles to Female"
+                title="Set all voice profiles to Sreymom (Female)"
               >
-                Female
+                Sreymom (Female)
               </button>
             </div>
           </div>
@@ -1071,10 +1070,10 @@ export default function SubtitleDataTable({
                             }}
                           >
                             <option value="Male" style={{ color: '#818cf8', backgroundColor: '#0f172a' }}>
-                              Male
+                              Piseth (Male)
                             </option>
                             <option value="Female" style={{ color: '#f472b6', backgroundColor: '#0f172a' }}>
-                              Female
+                              Sreymom (Female)
                             </option>
                           </select>
                         </div>

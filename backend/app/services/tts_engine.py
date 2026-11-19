@@ -162,11 +162,11 @@ def generate_speech_mms_khmer_sync(
     temp_raw = output_path + ".tmp.wav"
     sf.write(temp_raw, waveform, sr)
 
-    # Format pitch based on gender profile (Male: deeper masculine voice; Female: natural/higher pitch)
+    # Format pitch based on gender profile (Male: deeper masculine voice; Female: natural voice)
     if gender == "Male":
-        pitch_filter = f"asetrate={int(sr * 0.78)},atempo=1.28,aresample={sr},equalizer=f=160:t=q:w=1:g=5"
+        pitch_filter = f"asetrate={int(sr * 0.90)},atempo=1.11,aresample={sr},equalizer=f=160:t=q:w=1:g=3"
     else:
-        pitch_filter = f"asetrate={int(sr * 1.05)},aresample={sr}"
+        pitch_filter = f"aresample={sr}"
 
     cmd = [
         FFMPEG_PATH, "-y",
@@ -278,15 +278,18 @@ async def generate_speech_for_text(
         if duration > target_duration:
             is_exceeded = True
             if auto_fit:
-                tempo = min(duration / target_duration, 2.5)
-                stretched_filename = f"tts_fit_{unique_id}.mp3"
-                stretched_path = AUDIO_CACHE_DIR / stretched_filename
-                if time_stretch_audio(str(raw_path), str(stretched_path), tempo):
-                    final_filename = stretched_filename
-                    final_path = stretched_path
-                    duration = get_audio_duration(str(final_path))
-                    is_exceeded = False
-                    effective_speed = round(tempo, 1)
+                # Cap tempo acceleration to max 1.30x so Khmer speech remains clear and natural (preventing fast/choppy audio)
+                tempo = min(duration / target_duration, 1.30)
+                if tempo > 1.04:
+                    stretched_filename = f"tts_fit_{unique_id}.mp3"
+                    stretched_path = AUDIO_CACHE_DIR / stretched_filename
+                    if time_stretch_audio(str(raw_path), str(stretched_path), tempo):
+                        final_filename = stretched_filename
+                        final_path = stretched_path
+                        duration = get_audio_duration(str(final_path))
+                        # Only clear exceeded if audio actually fits within target slot (+0.2s margin)
+                        is_exceeded = (duration > (target_duration + 0.2))
+                        effective_speed = round(tempo, 2)
 
     return {
         "audio_filename": final_filename,

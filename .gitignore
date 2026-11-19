@@ -40,3 +40,4 @@ models/**/*.pth
 models/**/*.bin
 
 
+storage/last_burn_req.json
