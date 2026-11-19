@@ -245,10 +245,29 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
     # --- Video chain ---
     current_v = f"[{video_in}:v]"
 
+    # 0. Dedicated Video Mirror & Screen Flip Transform
+    mirror_h = getattr(req, "mirror_horizontal", False)
+    flip_v = getattr(req, "flip_vertical", False)
+    rot_angle = getattr(req, "rotate_angle", 0) or 0
+    orient_filters = []
+    if mirror_h:
+        orient_filters.append("hflip")
+    if flip_v:
+        orient_filters.append("vflip")
+    if rot_angle == 90:
+        orient_filters.append("transpose=1")
+    elif rot_angle == 180:
+        orient_filters.append("hflip,vflip")
+    elif rot_angle == 270:
+        orient_filters.append("transpose=2")
+    if orient_filters:
+        filter_chains.append(f"{current_v}{','.join(orient_filters)}[vorient]")
+        current_v = "[vorient]"
+
     # 1. Anti-Copyright Shield transforms
     if getattr(req, "enable_anti_copyright", False):
         ac_filters = []
-        if getattr(req, "anti_copyright_flip", True):
+        if getattr(req, "anti_copyright_flip", True) and not mirror_h:
             ac_filters.append("hflip")
         z = max(1.01, min(getattr(req, "anti_copyright_zoom", 1.03) or 1.03, 1.15))
         ac_filters.append(f"scale=iw*{z:.3f}:ih*{z:.3f},crop=iw/{z:.3f}:ih/{z:.3f}")
@@ -898,3 +917,113 @@ def split_video(
         RENDER_PROGRESS[job_id]["message"] = f"Successfully created {len(results)} split videos!"
 
     return results
+
+def render_mirror_video(
+    video_filename: str,
+    mirror_horizontal: bool = True,
+    flip_vertical: bool = False,
+    rotate_angle: int = 0,
+    use_gpu: bool = True,
+    custom_output_filename: Optional[str] = None,
+    job_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Fast video mirror and flip transform with hardware acceleration"""
+    src_path = resolve_video_file(video_filename)
+    if not src_path or not src_path.exists():
+        raise FileNotFoundError(f"Video file not found: {video_filename}")
+
+    if job_id:
+        RENDER_PROGRESS[job_id] = {
+            "progress": 5,
+            "status": "processing",
+            "message": "Initializing fast video mirror / flip..."
+        }
+
+    # Build orientation filter
+    orient_filters = []
+    if mirror_horizontal:
+        orient_filters.append("hflip")
+    if flip_vertical:
+        orient_filters.append("vflip")
+    rot = rotate_angle or 0
+    if rot == 90:
+        orient_filters.append("transpose=1")
+    elif rot == 180:
+        orient_filters.append("hflip,vflip")
+    elif rot == 270:
+        orient_filters.append("transpose=2")
+
+    if not orient_filters:
+        orient_filters.append("null")
+
+    filter_str = ",".join(orient_filters)
+
+    # Determine output filename
+    if custom_output_filename:
+        out_name = Path(custom_output_filename).name
+        if not out_name.endswith(".mp4"):
+            out_name += ".mp4"
+    else:
+        stem = src_path.stem
+        tag = []
+        if mirror_horizontal: tag.append("mirrored")
+        if flip_vertical: tag.append("vflipped")
+        if rot: tag.append(f"rot{rot}")
+        tag_str = "_".join(tag) if tag else "flipped"
+        out_name = f"{stem}_{tag_str}.mp4"
+
+    export_path = EXPORTS_DIR / out_name
+    counter = 1
+    while export_path.exists():
+        export_path = EXPORTS_DIR / f"{Path(out_name).stem}_{counter}.mp4"
+        counter += 1
+    out_name = export_path.name
+
+    # Select encoder
+    if use_gpu:
+        encoder_args = ["-c:v", "h264_amf", "-quality", "speed", "-rc", "cbr", "-pix_fmt", "yuv420p"]
+    else:
+        encoder_args = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p"]
+
+    cmd = [
+        FFMPEG_PATH, "-y",
+        "-i", str(src_path),
+        "-vf", filter_str,
+        *encoder_args,
+        "-c:a", "copy",
+        "-avoid_negative_ts", "make_zero",
+        str(export_path)
+    ]
+
+    if job_id:
+        RENDER_PROGRESS[job_id]["progress"] = 35
+        RENDER_PROGRESS[job_id]["message"] = "Processing video mirror transform..."
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+    if proc.returncode != 0 or not export_path.exists() or export_path.stat().st_size < 1000:
+        # Fallback to standard CPU libx264
+        cmd_cpu = [
+            FFMPEG_PATH, "-y",
+            "-i", str(src_path),
+            "-vf", filter_str,
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+            "-c:a", "copy",
+            str(export_path)
+        ]
+        proc2 = subprocess.run(cmd_cpu, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+        if proc2.returncode != 0 or not export_path.exists() or export_path.stat().st_size < 1000:
+            raise RuntimeError(f"Video mirror processing failed: {proc2.stderr[-400:]}")
+
+    if job_id:
+        RENDER_PROGRESS[job_id]["progress"] = 100
+        RENDER_PROGRESS[job_id]["status"] = "completed"
+        RENDER_PROGRESS[job_id]["message"] = "Video mirrored successfully!"
+
+    size_mb = round(export_path.stat().st_size / (1024 * 1024), 2)
+    return {
+        "status": "success",
+        "filename": out_name,
+        "export_filename": out_name,
+        "download_url": f"/api/exports/{urllib.parse.quote(out_name)}",
+        "size_mb": size_mb
+    }

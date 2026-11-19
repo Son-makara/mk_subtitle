@@ -16,18 +16,32 @@ if exist "MK-Subtitle-Studio.exe" (
     exit /b 0
 )
 
-:: 3. If pythonw is available, launch silently in background with zero console window
+:: 3. Prefer virtual environment Python if present
+if exist "venv\Scripts\pythonw.exe" (
+    start "" "venv\Scripts\pythonw.exe" desktop_app.py
+    exit /b 0
+)
+if exist "venv\Scripts\python.exe" (
+    start "" "venv\Scripts\python.exe" desktop_app.py
+    exit /b 0
+)
+
+:: 4. If pythonw is available in PATH, launch silently in background with zero console window
 where pythonw >nul 2>nul
 if %ERRORLEVEL% equ 0 (
     start "" pythonw desktop_app.py
     exit /b 0
 )
 
-:: 4. Fallback: launch via standard python in background
+:: 5. Fallback: launch via standard python in background
 start "" python desktop_app.py
 exit /b 0
 
 :do_build
-python desktop_app.py --build
+if exist "venv\Scripts\python.exe" (
+    "venv\Scripts\python.exe" desktop_app.py --build
+) else (
+    python desktop_app.py --build
+)
 if "%~2"=="" pause
 exit /b %ERRORLEVEL%

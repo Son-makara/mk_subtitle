@@ -27,6 +27,7 @@ from .models.subtitle import (
     VideoConcatRequest,
     VideoSplitRequest,
     VideoSplitSegment,
+    VideoMirrorRequest,
     OpenVlcRequest
 )
 from .services.subtitle_parser import (
@@ -50,7 +51,7 @@ from .services.translator import (
 )
 from .services.whisper_stt import transcribe_video_whisper
 from .services.vocal_separator import separate_audio_vocals
-from .services.ffmpeg_runner import probe_video, render_and_burn_video, get_render_progress, concat_videos, split_video, resolve_video_file
+from .services.ffmpeg_runner import probe_video, render_and_burn_video, get_render_progress, concat_videos, split_video, render_mirror_video, resolve_video_file
 
 app = FastAPI(
     title="mk_subtitle API",
@@ -726,6 +727,27 @@ async def split_video_endpoint(req: VideoSplitRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Video splitting failed: {str(e)}")
+
+@app.post("/api/render/mirror")
+async def mirror_video_endpoint(req: VideoMirrorRequest):
+    try:
+        if not req.video_filename:
+            raise HTTPException(status_code=400, detail="No video filename provided.")
+        result = await asyncio.to_thread(
+            render_mirror_video,
+            video_filename=req.video_filename,
+            mirror_horizontal=req.mirror_horizontal,
+            flip_vertical=req.flip_vertical,
+            rotate_angle=req.rotate_angle,
+            use_gpu=req.use_amf_gpu,
+            custom_output_filename=req.custom_output_filename,
+            job_id=req.job_id
+        )
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Video mirror failed: {str(e)}")
 
 @app.get("/api/video/probe")
 async def probe_video_endpoint(filename: str):

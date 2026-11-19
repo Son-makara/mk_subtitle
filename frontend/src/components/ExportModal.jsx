@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, Image as ImageIcon, Layers, ArrowUp, ArrowDown, Plus, Film, Loader2, FolderOpen, Play, Pause, Volume2, VolumeX, CheckCircle2, Shield, EyeOff, Music, Sparkles, Move, Square, Circle, Scissors, Clock, RefreshCw, ArrowUpDown } from 'lucide-react';
+import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, Image as ImageIcon, Layers, ArrowUp, ArrowDown, Plus, Film, Loader2, FolderOpen, Play, Pause, Volume2, VolumeX, CheckCircle2, Shield, EyeOff, Music, Sparkles, Move, Square, Circle, Scissors, Clock, RefreshCw, ArrowUpDown, FlipHorizontal, FlipVertical, RotateCw } from 'lucide-react';
 
 export default function ExportModal({
   isOpen,
@@ -967,6 +967,13 @@ export default function ExportModal({
   const [antiCopyrightColor, setAntiCopyrightColor] = useState(true);
   const [antiCopyrightSpeed, setAntiCopyrightSpeed] = useState(1.03); // 1.01 - 1.08
 
+  // 3. Dedicated Video Mirror & Screen Flip Transform
+  const [mirrorHorizontal, setMirrorHorizontal] = useState(false);
+  const [flipVertical, setFlipVertical] = useState(false);
+  const [rotateAngle, setRotateAngle] = useState(0); // 0, 90, 180, 270
+  const [isQuickMirroring, setIsQuickMirroring] = useState(false);
+  const [quickMirrorResult, setQuickMirrorResult] = useState(null);
+
   // 7. Endless BGM Auto-Crossfader & Cinematic Fader
   const [bgmCrossfade, setBgmCrossfade] = useState(true);
   const [bgmFadeIn, setBgmFadeIn] = useState(2.0); // seconds
@@ -1009,6 +1016,42 @@ export default function ExportModal({
       setMuteOriginalAudio(false);
     } else {
       setMuteOriginalAudio(true);
+    }
+  };
+
+  const handleQuickMirrorExport = async () => {
+    const qItem = (queue && queue[selectedQueueIndex]) || (queue && queue[0]) || null;
+    const filename = qItem?.serverFilename || qItem?.name || (videoUrl ? videoUrl.split('/').pop().split('?')[0] : null);
+    if (!filename) {
+      alert('No video available to mirror. Please load a video first.');
+      return;
+    }
+    const filePath = qItem?.filePath || null;
+    setIsQuickMirroring(true);
+    setQuickMirrorResult(null);
+    try {
+      const res = await fetch('/api/render/mirror', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_filename: filename,
+          video_file_path: filePath,
+          mirror_horizontal: mirrorHorizontal,
+          flip_vertical: flipVertical,
+          rotate_angle: rotateAngle,
+          use_amf_gpu: useAmfGpu
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to mirror video');
+      }
+      const data = await res.json();
+      setQuickMirrorResult(data);
+    } catch (err) {
+      alert(`Mirror Export Error: ${err.message}`);
+    } finally {
+      setIsQuickMirroring(false);
     }
   };
 
@@ -2687,7 +2730,13 @@ export default function ExportModal({
                           width: '100%',
                           height: '100%',
                           objectFit: 'contain',
-                          pointerEvents: 'none'
+                          pointerEvents: 'none',
+                          transform: [
+                            (mirrorHorizontal || (enableAntiCopyright && antiCopyrightFlip)) ? 'scaleX(-1)' : '',
+                            flipVertical ? 'scaleY(-1)' : '',
+                            rotateAngle ? `rotate(${rotateAngle}deg)` : ''
+                          ].filter(Boolean).join(' ') || 'none',
+                          transition: 'transform 0.25s ease'
                         }}
                       />
                     ) : (
@@ -4215,6 +4264,199 @@ export default function ExportModal({
                     )}
                   </div>
 
+                  {/* Tool 3: Dedicated Video Mirror & Screen Flip Transform */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div
+                      style={{
+                        backgroundColor: (mirrorHorizontal || flipVertical || rotateAngle > 0) ? 'rgba(56, 189, 248, 0.08)' : 'var(--bg-base)',
+                        border: (mirrorHorizontal || flipVertical || rotateAngle > 0) ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid var(--border-color)',
+                        borderRadius: '10px',
+                        padding: '12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      {/* Header Row */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <FlipHorizontal size={16} style={{ color: '#38bdf8' }} />
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-bright)' }}>
+                            Mirror Video & Flip Screen (ឆ្លុះ / បង្វិលអេក្រង់)
+                          </span>
+                          {(mirrorHorizontal || flipVertical || rotateAngle > 0) && (
+                            <span style={{ fontSize: '10px', backgroundColor: '#0284c7', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                              Active
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Reset button if active */}
+                        {(mirrorHorizontal || flipVertical || rotateAngle > 0) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMirrorHorizontal(false);
+                              setFlipVertical(false);
+                              setRotateAngle(0);
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--text-muted)',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Reset all flips & rotations"
+                          >
+                            <RefreshCw size={11} /> Reset
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Mirror / Flip Buttons Grid */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        {/* Horizontal Mirror (Left <-> Right) */}
+                        <button
+                          type="button"
+                          onClick={() => setMirrorHorizontal(!mirrorHorizontal)}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: mirrorHorizontal ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                            backgroundColor: mirrorHorizontal ? 'rgba(56, 189, 248, 0.2)' : 'var(--bg-tertiary)',
+                            color: mirrorHorizontal ? '#38bdf8' : 'var(--text-bright)',
+                            fontSize: '11px',
+                            fontWeight: mirrorHorizontal ? 600 : 500,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '6px',
+                            transition: 'all 0.15s ease'
+                          }}
+                          title="Mirror screen horizontally (left to right) - Content-ID copyright safety"
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <FlipHorizontal size={14} />
+                            <span>Mirror Left ⇋ Right (hflip)</span>
+                          </div>
+                          {mirrorHorizontal && <Check size={13} style={{ color: '#38bdf8' }} />}
+                        </button>
+
+                        {/* Vertical Flip (Top <-> Bottom) */}
+                        <button
+                          type="button"
+                          onClick={() => setFlipVertical(!flipVertical)}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: flipVertical ? '1px solid #a855f7' : '1px solid var(--border-color)',
+                            backgroundColor: flipVertical ? 'rgba(168, 85, 247, 0.2)' : 'var(--bg-tertiary)',
+                            color: flipVertical ? '#c084fc' : 'var(--text-bright)',
+                            fontSize: '11px',
+                            fontWeight: flipVertical ? 600 : 500,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '6px',
+                            transition: 'all 0.15s ease'
+                          }}
+                          title="Flip screen vertically (top to bottom)"
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <FlipVertical size={14} />
+                            <span>Flip Top ↕ Bottom (vflip)</span>
+                          </div>
+                          {flipVertical && <Check size={13} style={{ color: '#c084fc' }} />}
+                        </button>
+                      </div>
+
+                      {/* Rotate Screen Selector */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <RotateCw size={12} /> Rotate Angle:
+                        </span>
+                        <div style={{ display: 'inline-flex', gap: '4px' }}>
+                          {[
+                            { angle: 0, label: '0° Normal' },
+                            { angle: 90, label: '90° CW' },
+                            { angle: 180, label: '180°' },
+                            { angle: 270, label: '270° CW' }
+                          ].map((r) => (
+                            <button
+                              key={r.angle}
+                              type="button"
+                              onClick={() => setRotateAngle(r.angle)}
+                              style={{
+                                padding: '3px 8px',
+                                fontSize: '10px',
+                                fontWeight: rotateAngle === r.angle ? 700 : 400,
+                                borderRadius: '4px',
+                                border: rotateAngle === r.angle ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                                backgroundColor: rotateAngle === r.angle ? 'rgba(56, 189, 248, 0.25)' : 'var(--bg-tertiary)',
+                                color: rotateAngle === r.angle ? '#38bdf8' : 'var(--text-secondary)',
+                                cursor: 'pointer',
+                                transition: 'all 0.1s ease'
+                              }}
+                            >
+                              {r.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Standalone Fast Mirror Export Action */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                        <span style={{ fontSize: '10px', color: '#6ee7b7' }}>
+                          💡 Real-time live preview shown in the video canvas above.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleQuickMirrorExport}
+                          disabled={isQuickMirroring || (!mirrorHorizontal && !flipVertical && rotateAngle === 0)}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            borderRadius: '5px',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            backgroundColor: (!mirrorHorizontal && !flipVertical && rotateAngle === 0) ? 'rgba(255,255,255,0.05)' : 'rgba(56, 189, 248, 0.15)',
+                            color: (!mirrorHorizontal && !flipVertical && rotateAngle === 0) ? 'var(--text-muted)' : '#38bdf8',
+                            cursor: (isQuickMirroring || (!mirrorHorizontal && !flipVertical && rotateAngle === 0)) ? 'not-allowed' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.15s ease'
+                          }}
+                          title="Quickly export just the mirrored/flipped video without burning subtitles"
+                        >
+                          {isQuickMirroring ? <Loader2 size={11} className="animate-spin" /> : <Flame size={11} />}
+                          <span>{isQuickMirroring ? 'Mirroring...' : '⚡ Quick Export Flipped Video'}</span>
+                        </button>
+                      </div>
+
+                      {/* Quick Mirror Result Toast */}
+                      {quickMirrorResult && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', color: '#6ee7b7' }}>
+                          <span>✅ Created: {quickMirrorResult.export_filename} ({quickMirrorResult.size_mb} MB)</span>
+                          <a
+                            href={quickMirrorResult.download_url}
+                            download={quickMirrorResult.export_filename}
+                            style={{ color: '#fff', backgroundColor: '#059669', padding: '2px 8px', borderRadius: '4px', textDecoration: 'none', fontWeight: 600 }}
+                          >
+                            Download
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -4271,6 +4513,9 @@ export default function ExportModal({
                         anti_copyright_zoom: parseFloat(antiCopyrightZoom) || 1.03,
                         anti_copyright_color: antiCopyrightColor,
                         anti_copyright_speed: parseFloat(antiCopyrightSpeed) || 1.03,
+                        mirror_horizontal: mirrorHorizontal,
+                        flip_vertical: flipVertical,
+                        rotate_angle: rotateAngle,
                         use_amf_gpu: useAmfGpu,
                         combine_into_one: renderScope === 'batch' && batchOutputMode === 'combine',
                         combined_filename: combinedTitle || 'Combined_Full_Movie.mp4',

@@ -35,10 +35,7 @@ def find_ffmpeg() -> str:
     path = shutil.which("ffmpeg")
     if path:
         return path
-    # 3. Fallback
-    fallback = Path("D:/Coding/DAI-Dubber FREE_FULL_Windows_v3/release/tools/ffmpeg.exe")
-    if fallback.exists():
-        return str(fallback)
+    # 3. Fallback to command name
     return "ffmpeg"
 
 def find_ffprobe() -> str:
@@ -50,10 +47,7 @@ def find_ffprobe() -> str:
     path = shutil.which("ffprobe")
     if path:
         return path
-    # 3. Fallback
-    fallback = Path("D:/Coding/DAI-Dubber FREE_FULL_Windows_v3/release/tools/ffprobe.exe")
-    if fallback.exists():
-        return str(fallback)
+    # 3. Fallback to command name
     return "ffprobe"
 
 FFMPEG_PATH = find_ffmpeg()

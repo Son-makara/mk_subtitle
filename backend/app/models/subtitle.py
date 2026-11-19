@@ -112,6 +112,9 @@ class VideoBurnRequest(BaseModel):
     anti_copyright_zoom: float = 1.03
     anti_copyright_color: bool = True
     anti_copyright_speed: float = 1.03
+    mirror_horizontal: bool = False  # Independent Horizontal mirror flip (hflip)
+    flip_vertical: bool = False      # Independent Vertical flip (vflip)
+    rotate_angle: int = 0            # 0, 90, 180, 270 degrees
     use_amf_gpu: bool = True
     add_logo_watermark: bool = False
     watermark_custom_path: Optional[str] = None
@@ -152,6 +155,19 @@ class VideoSplitSegment(BaseModel):
 class VideoSplitRequest(BaseModel):
     video_filename: str
     segments: List[VideoSplitSegment]
+    job_id: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
+
+class VideoMirrorRequest(BaseModel):
+    video_filename: str
+    video_file_path: Optional[str] = None
+    mirror_horizontal: bool = True
+    flip_vertical: bool = False
+    rotate_angle: int = 0
+    use_amf_gpu: bool = True
+    custom_output_filename: Optional[str] = None
     job_id: Optional[str] = None
 
     class Config:

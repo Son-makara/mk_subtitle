@@ -1,14 +1,14 @@
 # MK Movie - Subtitle & Dubbing Studio
 
 > **Khmer AI Subtitle, Dubbing & Video Hard-Sub Studio**  
-> An all-in-one desktop and web application for automated video transcription (OpenAI Whisper), AI translation to Khmer, pitch-matched Edge-TTS voice dubbing, vocal separation (UVR AI), custom watermark branding, and hardware-accelerated (AMD AMF / NVIDIA NVENC / CPU) multi-episode batch video rendering.
+> An all-in-one desktop and web application for automated video transcription (OpenAI Whisper & faster-whisper), AI translation to Khmer, pitch-matched Edge-TTS voice dubbing, vocal separation (UVR AI), custom watermark branding, and hardware-accelerated (AMD AMF / NVIDIA NVENC / CPU) multi-episode batch video rendering.
 
 ---
 
 ## 🌟 Key Features
 
-- **OpenAI Whisper AI Transcription**: Automatic multi-language speech-to-text (Chinese, English, etc.) with timestamp alignment.
-- **Smart Khmer Translation**: Instant high-accuracy translation into Khmer (`km`) via Google Translate or Google Gemini AI.
+- **OpenAI Whisper & faster-whisper STT**: Automatic multi-language speech-to-text (Chinese, English, etc.) with millisecond timestamp alignment and Silero VAD.
+- **Smart Khmer Translation**: Instant high-accuracy translation into Khmer (`km`) via free Google Translate or Google Gemini AI.
 - **Natural Voice Dubbing (Edge-TTS)**: Pitch-matched natural Khmer voices (`km-KH-PisethNeural`, `km-KH-SreymomNeural`) with automatic audio time-stretching to match original video lip sync.
 - **UVR AI Vocal Separation**: Erase original speech while preserving background music & sound effects.
 - **Custom Watermark & Brand Logo**: Upload and place custom logos (PNG/JPG/WEBP) at Top-Left, Top-Right, Bottom-Left, or Bottom-Right with live preview scaling.
@@ -18,168 +18,210 @@
 
 ---
 
-## 💻 System Requirements & Prerequisites
+## 💻 System Requirements & Prerequisites (For New PCs)
 
-Before installing, ensure your system meets the following requirements:
+Before running the application on a new PC, make sure the following foundational software is installed:
 
-- **Operating System**: Windows 10 / 11 (64-bit)
-- **Python**: Python 3.10 – 3.13 (64-bit)
-  - ⚠️ *Important*: During Python installation, check the box **"Add python.exe to PATH"**.
-- **Node.js**: v18.0+ or v20+ LTS with npm ([Download Node.js](https://nodejs.org/))
-- **Git**: Installed for cloning the repository ([Download Git](https://git-scm.com/))
-- **Microsoft Edge WebView2**: Pre-installed on Windows 10/11 (required for PyWebView desktop window)
-- **FFmpeg & FFprobe**: Included in the project `tools/` folder or installed in system `PATH`
-- **Hardware Recommendations**:
-  - **CPU**: Multi-core Intel or AMD processor (2.0 GHz+)
-  - **RAM**: 8 GB minimum (16 GB recommended for Whisper STT & batch video rendering)
-  - **GPU** (Optional): 
-    - **NVIDIA GPU** (GTX 1060+ / RTX series): Enables CUDA acceleration for 4x faster Whisper speech-to-text and NVENC video burning.
-    - **AMD GPU** (Radeon RX series): Supports AMD AMF hardware-accelerated video rendering.
-    - **CPU Mode**: Fully supported out of the box if no dedicated GPU is available.
+| Software | Required Version | Purpose | Download Link |
+| :--- | :--- | :--- | :--- |
+| **Windows OS** | Windows 10 / 11 (64-bit) | Operating System | Built-in |
+| **Python** | 3.10, 3.11, or 3.12 (64-bit) | Backend API & AI Engine | [python.org/downloads](https://www.python.org/downloads/) |
+| **Node.js** | v18.0+ or v20+ LTS (with npm) | Frontend Build & Vite UI | [nodejs.org](https://nodejs.org/) |
+| **Git for Windows** | Latest | Cloning repository & updates | [git-scm.com](https://git-scm.com/) |
+| **FFmpeg & FFprobe** | 6.0+ Essentials or Full | Audio extraction, burns & concat | [gyan.dev/ffmpeg](https://www.gyan.dev/ffmpeg/builds/) |
+| **Edge WebView2** | Evergreen Runtime | Native Desktop Window UI | [developer.microsoft.com](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) |
+
+> [!CAUTION]
+> **CRITICAL PYTHON INSTALLATION STEP**:  
+> When running the Python installer on a new PC, you **MUST check the box: `[X] Add python.exe to PATH`** at the very bottom of the first setup screen! If you skip this, Windows will not recognize `python` or `pip` in the terminal.
 
 ---
 
-## ⚡ Quick Start (TL;DR)
+## ⚡ Super Fast Setup via `winget` (Windows 10 / 11)
 
-If you already have Python and Node.js installed, open PowerShell in the project directory and run:
+If you are setting up a brand-new Windows 10 or 11 PC, you do not need to browse websites to download installers individually. Windows includes **Windows Package Manager (`winget`)** by default.
+
+Open **PowerShell as Administrator** (Right-click Start > *Terminal / PowerShell (Admin)*) and run this single block:
 
 ```powershell
-# 1. Create and activate virtual environment
-python -m venv venv
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\venv\Scripts\Activate.ps1
-
-# 2. Install backend dependencies
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-
-# 3. Build frontend assets
-cd frontend
-npm install
-npm run build
-cd ..
-
-# 4. Launch Desktop Studio
-.\run.bat
+# 1. Install all prerequisites at once
+winget install -e --id Python.Python.3.11 --override "/passive InstallAllUsers=1 PrependPath=1"
+winget install -e --id OpenJS.NodeJS.LTS
+winget install -e --id Git.Git
+winget install -e --id Gyan.FFmpeg
+winget install -e --id Microsoft.EdgeWebView2Runtime
 ```
 
+> [!IMPORTANT]
+> **Restart your terminal** after running the `winget` commands so your system loads the new environment variables in `PATH`.
+
 ---
 
-## 🚀 Step-by-Step Installation Guide
+## 🚀 Installation Guide for a Fresh PC
 
-### Step 1: Clone or Download the Repository
+You can install and configure the project using either **Method A (Automated 1-Click Script)** or **Method B (Step-by-Step Manual Setup)**.
 
-Open Windows PowerShell or Command Prompt:
+---
+
+### Method A: Automated 1-Click Setup (`setup.bat`) — *Recommended*
+
+We provide an automated installer script `setup.bat` that validates all system tools, creates the virtual environment, installs Python packages, prompts for optional NVIDIA CUDA acceleration, and compiles the frontend UI automatically.
+
+1. **Get the code**:
+   ```powershell
+   git clone https://github.com/your-username/mk_subtitle.git
+   cd mk_subtitle
+   ```
+   *(Or download the ZIP from GitHub, right-click > Extract All, and open the folder)*.
+
+2. **Run `setup.bat`**:
+   - Double-click `setup.bat` in File Explorer, OR run in PowerShell:
+   ```powershell
+   .\setup.bat
+   ```
+
+3. **What `setup.bat` does automatically**:
+   - ✅ Verifies Python 3.10+ is detected in `PATH`
+   - ✅ Verifies Node.js and npm are available
+   - ✅ Checks for FFmpeg (`tools/ffmpeg.exe` or system `PATH`)
+   - ✅ Creates the Python virtual environment (`venv`)
+   - ✅ Upgrades `pip` and installs all dependencies from `requirements.txt`
+   - ✅ Prompts if you have an NVIDIA GPU to install CUDA 12.4 PyTorch acceleration
+   - ✅ Runs `npm install` and `npm run build` in `frontend/`
+   - ✅ Creates required storage directories (`storage/uploads`, `storage/audio_cache`, `storage/exports`)
+
+4. **Launch the Studio**:
+   - Double-click `run.bat` to start the desktop app!
+
+---
+
+### Method B: Step-by-Step Manual Installation
+
+If you prefer installing manually or want complete control over each step:
+
+#### Step 1: Clone or Download the Project
 
 ```powershell
+# In PowerShell or Command Prompt:
 git clone https://github.com/your-username/mk_subtitle.git
 cd mk_subtitle
 ```
 
-*(Or download the ZIP from GitHub and extract it to your preferred folder, e.g. `D:\Coding\mk_subtitle`)*.
+---
+
+#### Step 2: Set Up FFmpeg & FFprobe
+
+FFmpeg is essential for audio extraction, vocal separation, and subtitle burning.
+
+Because git repositories do not track binary `.exe` files, check if you have FFmpeg:
+
+1. **Option 1 (System-wide via winget - Easiest)**:
+   ```powershell
+   winget install Gyan.FFmpeg
+   ```
+   *Restart terminal and verify with `ffmpeg -version`*.
+
+2. **Option 2 (Local `tools/` folder)**:
+   - Download **ffmpeg-release-essentials.zip** from [Gyan.dev FFmpeg Builds](https://www.gyan.dev/ffmpeg/builds/).
+   - Open the downloaded `.zip` file, go into the `bin/` folder.
+   - Copy `ffmpeg.exe` and `ffprobe.exe` directly into the `mk_subtitle/tools/` folder:
+     ```text
+     mk_subtitle/
+     └── tools/
+         ├── ffmpeg.exe
+         └── ffprobe.exe
+     ```
 
 ---
 
-### Step 2: Set Up Python Virtual Environment
+#### Step 3: Set Up Python Virtual Environment
 
-A virtual environment keeps all project dependencies isolated and prevents version conflicts.
+Create an isolated Python environment so dependencies do not conflict with other system software:
 
 ```powershell
-# 1. Create virtual environment
+# 1. Create the virtual environment
 python -m venv venv
 
-# 2. Activate virtual environment
-# On Windows PowerShell:
+# 2. Allow PowerShell script execution for this session
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+# 3. Activate the virtual environment
+# In PowerShell:
 .\venv\Scripts\Activate.ps1
 
-# On Windows Command Prompt (CMD):
-.\venv\Scripts\activate.bat
+# (OR in Command Prompt CMD):
+# .\venv\Scripts\activate.bat
 ```
 
 > [!TIP]
-> If PowerShell shows an error stating *`running scripts is disabled on this system`*, run:  
-> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` and then re-run `.\venv\Scripts\Activate.ps1`.
+> When active, your terminal prompt will show `(venv)`.
 
 ---
 
-### Step 3: Install Backend Dependencies
+#### Step 4: Install Backend Dependencies
 
-Upgrade `pip` and install all required Python libraries:
+Upgrade `pip` and install all necessary Python packages:
 
 ```powershell
+# Make sure (venv) is active
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-#### Optional: GPU Acceleration for NVIDIA Users (CUDA)
+---
 
-For blazing-fast Whisper speech-to-text (transcribe a 10-minute video in seconds) and AI vocal separation, install PyTorch with CUDA support:
+#### Step 5: (Optional) Enable NVIDIA GPU Acceleration (CUDA)
 
-```powershell
-# For CUDA 12.4 (Latest NVIDIA Drivers):
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+- **If you have an NVIDIA Graphics Card (GTX 1060+, RTX 20/30/40/50 series)**:
+  Install the CUDA-accelerated PyTorch build for 4x faster Whisper transcription and instant vocal separation:
+  ```powershell
+  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+  ```
 
-# OR for CUDA 12.1:
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-```
-
-> **Note**: AMD Radeon and Intel CPU users do **not** need to run this command — the standard PyTorch installed from `requirements.txt` is ready to use.
+- **If you have an AMD Radeon GPU or Intel / CPU**:
+  No action needed! The standard PyTorch installed by `requirements.txt` already works out of the box with your CPU and AMD AMF hardware video encoder.
 
 ---
 
-### Step 4: Verify FFmpeg Tools & AI Models
+#### Step 6: Install Frontend Dependencies & Build UI
 
-FFmpeg and FFprobe are required for extracting audio, processing waveforms, vocal separation, and burning hard-subs into MP4 videos.
-
-1. **Automatic Project Detection**:
-   - The application checks the project's `tools/` folder first (`tools\ffmpeg.exe` and `tools\ffprobe.exe`).
-   - If already present in `tools/`, no extra setup is needed!
-2. **If FFmpeg is missing from `tools/`**:
-   - Install via Windows Package Manager:
-     ```powershell
-     winget install Gyan.FFmpeg
-     ```
-   - OR manually download from [Gyan.dev FFmpeg Builds](https://www.gyan.dev/ffmpeg/builds/) (Release Essentials `.zip`), extract, and place `ffmpeg.exe` and `ffprobe.exe` into the `tools/` folder.
-3. **Verify in terminal**:
-   ```powershell
-   ffmpeg -version
-   ffprobe -version
-   ```
-4. **AI Models (`models/` folder)**:
-   - **UVR Vocal Separation Model**: Ensure `UVR-MDX-NET-Voc_FT.fp16acc.tflite` is present in the `models/` directory.
-   - **Whisper Speech-to-Text Models**: Whisper automatically downloads your selected model size (`tiny`, `base`, `small`, `medium`, `large-v3`) on the first transcription and caches it locally.
-
----
-
-### Step 5: Install Frontend Dependencies & Build
-
-The application UI is built with React 19, Vite, and Tailwind CSS. The desktop application and production backend serve pre-compiled static assets from `frontend/dist`.
+The frontend is built with React 19 and Vite. The backend serves pre-compiled production assets from `frontend/dist`:
 
 ```powershell
-# Navigate into the frontend folder
+# 1. Enter the frontend folder
 cd frontend
 
-# Install Node.js packages
+# 2. Install Node.js packages
 npm install
 
-# Build static production bundle
+# 3. Compile the production bundle
 npm run build
 
-# Return to project root
+# 4. Return to the main project root
 cd ..
 ```
 
 > [!IMPORTANT]
-> Always run `npm run build` after pulling updates or before launching `run.bat` for the first time so the desktop window has the compiled interface ready to render.
+> The desktop window requires `frontend/dist` to exist. Always run `npm run build` once on a fresh machine or whenever pulling UI updates!
 
 ---
 
-### Step 6: Environment Configuration (Optional `.env`)
+#### Step 7: Verify AI Models
 
-The app works immediately with **100% free Google Translate** (no API key required).
+1. **UVR Vocal Separation Model**:
+   - The vocal separator model `models/UVR-MDX-NET-Voc_FT.fp16acc.tflite` is tracked in the repository.
+   - Verify it exists in the `models/` folder.
+2. **Whisper Speech-to-Text Models**:
+   - You don't need to manually download Whisper models!
+   - On your first transcription, faster-whisper automatically downloads your selected model (`tiny`, `base`, `small`, `medium`, or `large-v3`) and caches it in `models/whisper/` or your user cache.
 
-If you want to use **Google Gemini 2.5 Flash** for enhanced context-aware subtitle translation, create a `.env` file in the root folder:
+---
+
+#### Step 8: Optional Environment Settings (`.env`)
+
+The studio works **100% out of the box with free Google Translate** (no API keys required).
+
+If you want to use **Google Gemini 2.5 Flash** for smart context-aware movie subtitle translation, create a `.env` file in the project root:
 
 ```ini
 # .env (in project root)
@@ -197,34 +239,35 @@ MK_DEBUG=True
 
 ## 🎬 How to Run the App
 
-### Option A: One-Click Desktop Application (Recommended)
+### Option 1: Native Desktop Application (Recommended)
 
-Simply double-click the launcher script in the project root:
-**
+Simply double-click:
 ```text
 run.bat
-```**
+```
+*(The updated `run.bat` automatically detects and uses your `venv` virtual environment!)*
 
-Or run via terminal:
+Or run from an activated terminal:
 ```powershell
 python desktop_app.py
 ```
 
-- Launches a clean native Windows application window with dark mode, native title bar, and instant splash screen (< 0.8s).
-- Automatically finds an open port (default: 8800) and starts the FastAPI engine in the background.
+- Launches a clean native Windows application window with dark mode, native title bar, and instant splash screen.
+- Automatically finds a free port (default: 8800) and starts the FastAPI server in the background.
 
 ---
 
-### Option B: Web Browser & Development Mode
+### Option 2: Web Browser & Development Mode
 
-If you prefer using your default browser (Chrome, Edge, Brave) or want live hot-reloading for code modifications:
+If you prefer using your default browser (Chrome, Edge, Brave) or want live hot-reloading for editing code:
 
 1. **Start the FastAPI Backend**:
    ```powershell
+   .\venv\Scripts\Activate.ps1
    uvicorn backend.app.main:app --host 127.0.0.1 --port 8800 --reload
    ```
 
-2. **Start the Frontend Vite Dev Server (in a second terminal)**:
+2. **Start the Frontend Vite Dev Server** *(in a second terminal)*:
    ```powershell
    cd frontend
    npm run dev
@@ -287,7 +330,7 @@ mk_subtitle/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py               # FastAPI application & REST endpoints
-│   │   ├── config.py             # System paths, storage & FFmpeg config
+│   │   ├── config.py             # System paths, storage & FFmpeg discovery
 │   │   ├── models/               # Pydantic schemas (subtitles, requests)
 │   │   └── services/
 │   │       ├── whisper_stt.py    # OpenAI Whisper speech-to-text
@@ -301,11 +344,15 @@ mk_subtitle/
 │   │   ├── utils/                # Time formatting & helpers
 │   │   ├── App.jsx               # Main React Studio layout & state
 │   │   └── main.jsx              # React DOM entry
+│   ├── dist/                     # Compiled production UI bundle (served by backend)
 │   └── package.json              # Vite & React dependencies
 ├── storage/                      # Audio cache, uploads & rendered exports
 ├── assets/                       # Branding logos & app icons
+├── tools/                        # FFmpeg & FFprobe binaries (ffmpeg.exe, ffprobe.exe)
+├── models/                       # UVR model & Whisper weights
 ├── desktop_app.py                # Native PyWebView launcher & build script
-├── run.bat                       # Quick desktop launcher
+├── setup.bat                     # 1-Click Automated Setup for Fresh PCs
+├── run.bat                       # Quick desktop launcher (venv-aware)
 ├── build_desktop_exe.bat         # PyInstaller one-click builder
 ├── requirements.txt              # Python dependencies
 └── README.md                     # Documentation
@@ -313,53 +360,88 @@ mk_subtitle/
 
 ---
 
-## 🛠️ Troubleshooting & Frequently Asked Questions
+## 🛠️ Troubleshooting & Frequently Asked Questions (New PC Edition)
 
-### 1. PowerShell Script Execution Disabled Error
+### 1. `'python'` or `'pip'` is not recognized as an internal or external command
+- **Cause**: Python was installed without checking the "Add to PATH" option.
+- **Solution**:
+  1. Download Python installer again from [python.org](https://www.python.org/downloads/).
+  2. Launch installer, select **Modify**, and make sure **Add python.exe to PATH** is checked.
+  3. Or manually add Python to User Environment Variables:
+     - `C:\Users\<Username>\AppData\Local\Programs\Python\Python311\`
+     - `C:\Users\<Username>\AppData\Local\Programs\Python\Python311\Scripts\`
+  4. Restart your terminal.
+
+---
+
+### 2. PowerShell Script Execution Disabled Error
 - **Symptom**: `.\venv\Scripts\Activate.ps1 : File cannot be loaded because running scripts is disabled on this system.`
-- **Solution**: Open PowerShell and run:
+- **Solution**: Run this command once in PowerShell:
   ```powershell
   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
   .\venv\Scripts\Activate.ps1
   ```
 
-### 2. Desktop Window Shows a Blank or White Screen
-- **Symptom**: Running `run.bat` or `python desktop_app.py` displays a white or empty window.
+---
+
+### 3. `'npm'` is not recognized as an internal or external command
+- **Cause**: Node.js was just installed, but the open terminal has not refreshed its PATH variables.
 - **Solution**:
-  1. Ensure you have built the frontend assets:
+  1. Close all PowerShell / Command Prompt windows and open a new one.
+  2. Type `node --version` and `npm --version` to verify.
+
+---
+
+### 4. FFmpeg or FFprobe Not Found
+- **Symptom**: Error during audio extraction, waveform generation, or video burning: `FFmpeg is not installed or not in PATH`.
+- **Solution**:
+  - **Quick Fix**: Install via winget:
+    ```powershell
+    winget install Gyan.FFmpeg
+    ```
+  - **Manual Fix**: Download FFmpeg essentials from [gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/), extract, and place `ffmpeg.exe` and `ffprobe.exe` directly inside the `mk_subtitle/tools/` directory.
+
+---
+
+### 5. Desktop Window Shows a Blank or White Screen
+- **Symptom**: Running `run.bat` or `python desktop_app.py` displays a white or blank window.
+- **Solution**:
+  1. The production frontend bundle has not been compiled yet. Run:
      ```powershell
      cd frontend
      npm run build
      cd ..
      ```
-  2. Verify that **Microsoft Edge WebView2 Runtime** is installed on your Windows PC (standard on Windows 10/11, or download from Microsoft).
+  2. Verify that **Microsoft Edge WebView2 Runtime** is installed. (Windows 10/11 normally includes it, but if you are on Windows N or Windows Server, download it from [Microsoft Edge WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)).
 
-### 3. FFmpeg or FFprobe Not Found
-- **Symptom**: `FFmpeg is not installed or not in PATH` error during audio extraction or video burning.
-- **Solution**:
-  - Check if `ffmpeg.exe` and `ffprobe.exe` exist inside the `tools/` folder.
-  - Or install via `winget install Gyan.FFmpeg` and restart your terminal.
+---
 
-### 4. GPU Acceleration (CUDA) Not Activating
-- **Symptom**: Whisper transcription is slow or running on CPU instead of NVIDIA GPU.
-- **Solution**: Check PyTorch CUDA availability:
+### 6. NVIDIA GPU / CUDA Not Being Used (Running on Slow CPU)
+- **Symptom**: Whisper transcription takes several minutes or task manager shows 0% GPU usage.
+- **Solution**: Check whether PyTorch recognizes your NVIDIA GPU:
   ```powershell
   python -c "import torch; print('CUDA available:', torch.cuda.is_available(), 'Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
   ```
-  If `CUDA available: False`, install the CUDA build of PyTorch:
+  If it prints `CUDA available: False`, reinstall PyTorch with CUDA:
   ```powershell
   pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
   ```
 
-### 5. Port Conflict (Port 8800 or 8000 Already in Use)
-- **Solution**: `desktop_app.py` automatically scans and binds to the next available free port (8801, 8802, etc.). You can also customize the port by setting `MK_PORT=8890` in your `.env` file.
+---
 
-### 6. Whisper Out of Memory (OOM) on Large Videos
-- **Solution**: If your GPU has less than 6GB VRAM, choose `tiny`, `base`, or `small` in the STT model selector instead of `medium` or `large-v3`. The `base` and `small` models provide excellent accuracy with low memory footprint.
+### 7. Port Conflict (Port 8800 Already in Use)
+- **Solution**: `desktop_app.py` automatically scans and binds to the next available free port (8801, 8802, etc.). You can also specify a custom port in your `.env` file:
+  ```ini
+  MK_PORT=8890
+  ```
+
+---
+
+### 8. Whisper Out of Memory (OOM) on Large Videos
+- **Solution**: If your GPU has less than 6GB VRAM, choose `tiny`, `base`, or `small` in the STT model selector in the UI instead of `large-v3`. The `base` and `small` models provide high accuracy while using minimal VRAM.
 
 ---
 
 ## 📄 License
 
 This project is for personal, educational, and creative content creation. All third-party libraries (OpenAI Whisper, Microsoft Edge-TTS, FFmpeg) belong to their respective copyright holders.
-
