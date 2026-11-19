@@ -124,3 +124,90 @@ Respond ONLY with valid JSON in this exact structure:
         print(f"Gemini translation failed: {e}. Falling back to Google free translate.")
 
     return await translate_batch_google_free(items, source_lang, target_lang)
+
+# ==================== Meta NLLB-200 100% Offline AI Translation ====================
+
+NLLB_LANG_MAP = {
+    "km": "khm_Khmr",
+    "en": "eng_Latn",
+    "zh": "zho_Hans",
+    "vi": "vie_Latn",
+    "th": "tha_Thai",
+    "ja": "jpn_Jpan",
+    "ko": "kor_Hang",
+    "fr": "fra_Latn",
+    "es": "spa_Latn",
+    "de": "deu_Latn",
+    "auto": "eng_Latn"
+}
+
+_NLLB_MODEL = None
+_NLLB_TOKENIZER = None
+
+def is_nllb_available() -> bool:
+    """Checks if NLLB-200 model is cached locally on disk"""
+    try:
+        import os
+        cache_dir = os.path.expanduser(r"~/.cache/huggingface/hub/models--facebook--nllb-200-distilled-600M")
+        return os.path.exists(cache_dir)
+    except Exception:
+        return False
+
+def get_nllb_model():
+    """Lazy-loads Meta NLLB-200 distilled 600M model onto CPU or GPU"""
+    global _NLLB_MODEL, _NLLB_TOKENIZER
+    if _NLLB_MODEL is None or _NLLB_TOKENIZER is None:
+        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+        model_id = "facebook/nllb-200-distilled-600M"
+        print("Loading Meta NLLB-200 Offline Translation model...")
+        _NLLB_TOKENIZER = AutoTokenizer.from_pretrained(model_id)
+        _NLLB_MODEL = AutoModelForSeq2SeqLM.from_pretrained(model_id)
+    return _NLLB_TOKENIZER, _NLLB_MODEL
+
+def translate_batch_nllb_sync(
+    texts: List[str],
+    source_lang: str = "auto",
+    target_lang: str = "km"
+) -> List[str]:
+    """Translates a batch of texts using NLLB-200 completely offline"""
+    if not texts:
+        return []
+    import torch
+    tokenizer, model = get_nllb_model()
+    src_code = NLLB_LANG_MAP.get(source_lang, "eng_Latn")
+    tgt_code = NLLB_LANG_MAP.get(target_lang, "khm_Khmr")
+
+    tokenizer.src_lang = src_code
+    forced_bos = tokenizer.convert_tokens_to_ids(tgt_code)
+
+    results = []
+    chunk_size = 8
+    for i in range(0, len(texts), chunk_size):
+        chunk = [t.strip() if t else "" for t in texts[i:i + chunk_size]]
+        inputs = tokenizer(chunk, return_tensors="pt", padding=True, truncation=True, max_length=256)
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                forced_bos_token_id=forced_bos,
+                max_length=256
+            )
+        decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        results.extend(decoded)
+    return results
+
+async def translate_batch_nllb_offline(
+    items: List[SubtitleItem],
+    source_lang: str = "auto",
+    target_lang: str = "km"
+) -> List[SubtitleItem]:
+    """Asynchronous wrapper for NLLB-200 offline translation"""
+    loop = asyncio.get_event_loop()
+    texts = [it.text for it in items]
+    translated_texts = await loop.run_in_executor(None, translate_batch_nllb_sync, texts, source_lang, target_lang)
+
+    copied = []
+    for it, trans in zip(items, translated_texts):
+        c = it.model_copy()
+        c.translated_text = trans or c.text
+        copied.append(c)
+    return copied

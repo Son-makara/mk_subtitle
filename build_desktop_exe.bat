@@ -19,6 +19,8 @@ python -m PyInstaller ^
     --icon "assets/logo.ico" ^
     --add-data "frontend/dist;frontend/dist" ^
     --add-data "assets;assets" ^
+    --add-data "models;models" ^
+    --add-data "models/whisper/assets;_internal/whisper/assets" ^
     --exclude-module cv2 ^
     --exclude-module imageio ^
     --exclude-module imageio_ffmpeg ^

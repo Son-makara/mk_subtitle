@@ -19,6 +19,7 @@ class SubtitleItem(BaseModel):
     audio_end: Optional[float] = Field(None, description="Audio end time on timeline")
     base_audio_duration: Optional[float] = Field(None, description="Base audio duration before speed adjust")
     is_duration_exceeded: Optional[bool] = Field(False, description="Whether audio exceeds subtitle interval")
+    audio_engine: Optional[str] = Field(None, description="TTS engine used: 'edge-tts' or 'mms-offline'")
 
     class Config:
         extra = "ignore"
@@ -44,6 +45,7 @@ class TTSGenerateItemRequest(BaseModel):
     speed: float = 1.0
     target_duration: Optional[float] = None
     auto_fit: bool = True
+    engine: Optional[str] = "edge-tts"  # "edge-tts" or "mms-offline"
 
 class TTSBatchRequest(BaseModel):
     items: List[SubtitleItem]
@@ -57,6 +59,7 @@ class TTSBatchRequest(BaseModel):
     pitch: str = "+0Hz"
     volume: str = "+0%"
     auto_fit: bool = True
+    engine: Optional[str] = "edge-tts"  # "edge-tts" or "mms-offline"
 
     class Config:
         extra = "ignore"
@@ -65,7 +68,7 @@ class TranslationRequest(BaseModel):
     items: List[SubtitleItem]
     source_lang: str = "auto"
     target_lang: str = "km"
-    provider: str = "google_free" # gemini or google_free
+    provider: str = "google_free" # "google_free", "gemini", or "nllb_offline"
     gemini_api_key: Optional[str] = None
 
     class Config:
@@ -73,6 +76,7 @@ class TranslationRequest(BaseModel):
 
 class VideoBurnRequest(BaseModel):
     video_filename: str
+    video_file_path: Optional[str] = None
     items: List[SubtitleItem]
     burn_subtitles: bool = True
     subtitle_mode: str = "khmer" # "khmer", "original", "none"
@@ -84,8 +88,8 @@ class VideoBurnRequest(BaseModel):
     subtitle_style: str = "modern_yellow"
     font_name: str = "Kantumruy Pro"
     font_size: int = 22
-    primary_color: str = "&H00FFFF"
-    outline_color: str = "&H000000"
+    primary_color: Optional[str] = None
+    outline_color: Optional[str] = None
     background_ducking_volume: float = 0.25
     smart_ducking: bool = True
     ducking_attack: int = 40
@@ -96,9 +100,13 @@ class VideoBurnRequest(BaseModel):
     bgm_fade_in: float = 2.0
     bgm_fade_out: float = 3.0
     enable_delogo: bool = False
-    delogo_mode: str = "blur"  # "blur", "black_bar"
-    delogo_area: str = "bottom_subtitles"  # "bottom_subtitles", "top_right", "top_left"
+    delogo_mode: str = "blur"  # "blur", "pixelate", "black_bar", "frosted"
+    delogo_area: str = "bottom_subtitles"  # "bottom_subtitles", "top_banner", "top_right", "top_left", "custom"
     delogo_height_pct: float = 0.14
+    delogo_x_pct: float = 0.0
+    delogo_y_pct: float = 0.86
+    delogo_w_pct: float = 1.0
+    delogo_shape: str = "rectangle"  # "rectangle", "pill"
     enable_anti_copyright: bool = False
     anti_copyright_flip: bool = True
     anti_copyright_zoom: float = 1.03
@@ -131,6 +139,19 @@ class VocalSeparationRequest(BaseModel):
 class VideoConcatRequest(BaseModel):
     video_filenames: List[str]
     custom_output_filename: Optional[str] = None
+    job_id: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
+
+class VideoSplitSegment(BaseModel):
+    start_time: str
+    end_time: str
+    output_filename: Optional[str] = None
+
+class VideoSplitRequest(BaseModel):
+    video_filename: str
+    segments: List[VideoSplitSegment]
     job_id: Optional[str] = None
 
     class Config:

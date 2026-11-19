@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, Image as ImageIcon, Layers, ArrowUp, ArrowDown, Plus, Film, Loader2, FolderOpen, Play, CheckCircle2, Shield, EyeOff, Music, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, Image as ImageIcon, Layers, ArrowUp, ArrowDown, Plus, Film, Loader2, FolderOpen, Play, Pause, Volume2, VolumeX, CheckCircle2, Shield, EyeOff, Music, Sparkles, Move, Square, Circle, Scissors, Clock, RefreshCw, ArrowUpDown } from 'lucide-react';
 
 export default function ExportModal({
   isOpen,
   onClose,
   type, // 'subs' or 'burn'
+  videoUrl = null,
+  currentTime = 0,
   onExportSubs,
   onRenderBurn,
   onSaveRenderedVideo,
@@ -26,6 +28,32 @@ export default function ExportModal({
   const [combinedTitle, setCombinedTitle] = useState('');
 
   const [activeTab, setActiveTab] = useState(type || 'burn');
+
+  const formatTime = (seconds) => {
+    if (isNaN(seconds) || seconds < 0) return '00:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const secondsToHHMMSS = (sec) => {
+    if (isNaN(sec) || sec < 0) return '00:00:00';
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const HHMMSSToSeconds = (str) => {
+    if (!str) return 0;
+    const parts = String(str).trim().split(':').map(Number);
+    if (parts.length === 3) {
+      return (parts[0] * 3600) + (parts[1] * 60) + (parts[2] || 0);
+    } else if (parts.length === 2) {
+      return (parts[0] * 60) + (parts[1] || 0);
+    }
+    return parseFloat(str) || 0;
+  };
 
   useEffect(() => {
     if (type) {
@@ -308,6 +336,14 @@ export default function ExportModal({
       if (subSettings.position !== undefined) setPosition(subSettings.position);
       if (subSettings.verticalOffset !== undefined) setVerticalOffset(subSettings.verticalOffset);
       if (subSettings.stylePreset !== undefined) setStylePreset(subSettings.stylePreset);
+      if (subSettings.enableDelogo !== undefined) setEnableDelogo(subSettings.enableDelogo);
+      if (subSettings.delogoMode !== undefined) setDelogoMode(subSettings.delogoMode);
+      if (subSettings.delogoArea !== undefined) setDelogoArea(subSettings.delogoArea);
+      if (subSettings.delogoHeightPct !== undefined) setDelogoHeightPct(subSettings.delogoHeightPct);
+      if (subSettings.delogoXPct !== undefined) setDelogoXPct(subSettings.delogoXPct);
+      if (subSettings.delogoYPct !== undefined) setDelogoYPct(subSettings.delogoYPct);
+      if (subSettings.delogoWPct !== undefined) setDelogoWPct(subSettings.delogoWPct);
+      if (subSettings.delogoShape !== undefined) setDelogoShape(subSettings.delogoShape);
     }
   }, [subSettings]);
 
@@ -319,6 +355,14 @@ export default function ExportModal({
       position: partial.position !== undefined ? partial.position : position,
       verticalOffset: partial.verticalOffset !== undefined ? partial.verticalOffset : verticalOffset,
       stylePreset: partial.stylePreset !== undefined ? partial.stylePreset : stylePreset,
+      enableDelogo: partial.enableDelogo !== undefined ? partial.enableDelogo : enableDelogo,
+      delogoMode: partial.delogoMode !== undefined ? partial.delogoMode : delogoMode,
+      delogoArea: partial.delogoArea !== undefined ? partial.delogoArea : delogoArea,
+      delogoHeightPct: partial.delogoHeightPct !== undefined ? partial.delogoHeightPct : delogoHeightPct,
+      delogoXPct: partial.delogoXPct !== undefined ? partial.delogoXPct : delogoXPct,
+      delogoYPct: partial.delogoYPct !== undefined ? partial.delogoYPct : delogoYPct,
+      delogoWPct: partial.delogoWPct !== undefined ? partial.delogoWPct : delogoWPct,
+      delogoShape: partial.delogoShape !== undefined ? partial.delogoShape : delogoShape,
     };
     if (partial.subtitleMode !== undefined) setSubtitleMode(partial.subtitleMode);
     if (partial.fontName !== undefined) setFontName(partial.fontName);
@@ -326,6 +370,14 @@ export default function ExportModal({
     if (partial.position !== undefined) setPosition(partial.position);
     if (partial.verticalOffset !== undefined) setVerticalOffset(partial.verticalOffset);
     if (partial.stylePreset !== undefined) setStylePreset(partial.stylePreset);
+    if (partial.enableDelogo !== undefined) setEnableDelogo(partial.enableDelogo);
+    if (partial.delogoMode !== undefined) setDelogoMode(partial.delogoMode);
+    if (partial.delogoArea !== undefined) setDelogoArea(partial.delogoArea);
+    if (partial.delogoHeightPct !== undefined) setDelogoHeightPct(partial.delogoHeightPct);
+    if (partial.delogoXPct !== undefined) setDelogoXPct(partial.delogoXPct);
+    if (partial.delogoYPct !== undefined) setDelogoYPct(partial.delogoYPct);
+    if (partial.delogoWPct !== undefined) setDelogoWPct(partial.delogoWPct);
+    if (partial.delogoShape !== undefined) setDelogoShape(partial.delogoShape);
     if (onUpdateSubSettings) {
       onUpdateSubSettings(updated);
     }
@@ -341,13 +393,316 @@ export default function ExportModal({
     return firstItem?.translated_text || firstItem?.text || 'ជំរាបសួរ! សូមស្វាគមន៍មកកាន់ MK Movie Studio!';
   }, [subtitles, subtitleMode]);
 
-  // Calculate batch count
-  const targetBatchCount = React.useMemo(() => {
+  // Calculate batch count & items
+  const targetBatchItems = React.useMemo(() => {
     if (selectedQueueIds && selectedQueueIds.length > 0) {
-      return selectedQueueIds.length;
+      return queue.filter((v) => selectedQueueIds.includes(v.id));
     }
-    return queue ? queue.length : 0;
+    return queue || [];
   }, [selectedQueueIds, queue]);
+
+  const targetBatchCount = React.useMemo(() => {
+    return targetBatchItems.length;
+  }, [targetBatchItems]);
+
+  // Batch Chunk Merging State
+  const [chunkTargetMins, setChunkTargetMins] = useState(30);
+  const [chunkGroups, setChunkGroups] = useState([]);
+
+  const calculateDefaultChunks = (items, targetMins) => {
+    if (!items || items.length === 0) return [];
+    const targetSec = Math.max(1, targetMins) * 60;
+    const firstVid = items[0];
+    const baseStem = (firstVid?.name || firstVid?.serverFilename || 'Series')
+      .replace(/\.[^/.]+$/, '')
+      .replace(/^mk_sub_/, '')
+      .replace(/_dubbed$/, '')
+      .replace(/S\d+E\d+/i, '')
+      .replace(/第?\d+集/g, '')
+      .replace(/[-_ ]+$/, '')
+      .trim() || 'Series';
+
+    const groups = [];
+    let current = {
+      id: 'chk_1',
+      part_index: 1,
+      custom_filename: `${baseStem}_Part_1.mp4`,
+      item_indices: [],
+      total_sec: 0
+    };
+
+    items.forEach((it, idx) => {
+      const dur = it.duration && !isNaN(it.duration) && it.duration > 0 ? it.duration : 120;
+      if (current.item_indices.length > 0 && (current.total_sec + dur) > (targetSec * 1.15)) {
+        groups.push(current);
+        const pNum = groups.length + 1;
+        current = {
+          id: `chk_${pNum}`,
+          part_index: pNum,
+          custom_filename: `${baseStem}_Part_${pNum}.mp4`,
+          item_indices: [idx],
+          total_sec: dur
+        };
+      } else {
+        current.item_indices.push(idx);
+        current.total_sec += dur;
+      }
+    });
+
+    if (current.item_indices.length > 0) {
+      groups.push(current);
+    }
+    return groups;
+  };
+
+  React.useEffect(() => {
+    if (renderScope === 'batch' && targetBatchItems.length > 0) {
+      setChunkGroups(calculateDefaultChunks(targetBatchItems, chunkTargetMins));
+    }
+  }, [renderScope, targetBatchCount, chunkTargetMins]);
+
+  const pushEpisodeToNextGroup = (gIdx) => {
+    if (gIdx >= chunkGroups.length - 1) return;
+    setChunkGroups((prev) => {
+      const copy = JSON.parse(JSON.stringify(prev));
+      const cur = copy[gIdx];
+      const next = copy[gIdx + 1];
+      if (cur.item_indices.length <= 1) return prev;
+      const movedIdx = cur.item_indices.pop();
+      next.item_indices.unshift(movedIdx);
+      const getDur = (i) => (targetBatchItems[i]?.duration && !isNaN(targetBatchItems[i].duration)) ? targetBatchItems[i].duration : 120;
+      cur.total_sec = cur.item_indices.reduce((sum, i) => sum + getDur(i), 0);
+      next.total_sec = next.item_indices.reduce((sum, i) => sum + getDur(i), 0);
+      return copy;
+    });
+  };
+
+  const pullEpisodeToPrevGroup = (gIdx) => {
+    if (gIdx <= 0) return;
+    setChunkGroups((prev) => {
+      const copy = JSON.parse(JSON.stringify(prev));
+      const cur = copy[gIdx];
+      const prevG = copy[gIdx - 1];
+      if (cur.item_indices.length <= 1) return prev;
+      const movedIdx = cur.item_indices.shift();
+      prevG.item_indices.push(movedIdx);
+      const getDur = (i) => (targetBatchItems[i]?.duration && !isNaN(targetBatchItems[i].duration)) ? targetBatchItems[i].duration : 120;
+      cur.total_sec = cur.item_indices.reduce((sum, i) => sum + getDur(i), 0);
+      prevG.total_sec = prevG.item_indices.reduce((sum, i) => sum + getDur(i), 0);
+      return copy;
+    });
+  };
+
+  const updateChunkGroupFilename = (gIdx, val) => {
+    setChunkGroups((prev) => {
+      const copy = [...prev];
+      copy[gIdx] = { ...copy[gIdx], custom_filename: val };
+      return copy;
+    });
+  };
+
+  // ===================== Split Video State & Methods =====================
+  const [splitVideoPath, setSplitVideoPath] = useState('');
+  const [splitVideoName, setSplitVideoName] = useState('');
+  const [splitDuration, setSplitDuration] = useState(0);
+  const [splitTargetMins, setSplitTargetMins] = useState(30);
+  const [splitSegments, setSplitSegments] = useState([]);
+  const [splitSyncAdjacent, setSplitSyncAdjacent] = useState(true);
+  const [isSplitting, setIsSplitting] = useState(false);
+  const [splitProgress, setSplitProgress] = useState(0);
+  const [splitStatusText, setSplitStatusText] = useState('');
+  const [splitResults, setSplitResults] = useState(null);
+  const [showSplitPicker, setShowSplitPicker] = useState(false);
+  const splitFileInputRef = useRef(null);
+
+  const autoCalculateSplitSegments = (dur, targetMins, name) => {
+    const totalSec = Math.max(1, dur || 0);
+    const targetSec = Math.max(1, targetMins) * 60;
+    const cleanBase = (name || 'Video').replace(/\.[^/.]+$/, '').replace(/_dubbed$/, '').replace(/^mk_sub_/, '').trim() || 'Video';
+    const segs = [];
+    let cur = 0;
+    let idx = 1;
+
+    while (cur < totalSec) {
+      let end = Math.min(totalSec, cur + targetSec);
+      if (totalSec - end < 90 && (totalSec - cur) <= targetSec * 1.25) {
+        end = totalSec;
+      }
+      segs.push({
+        id: 'seg_' + idx + '_' + Math.random().toString(36).substr(2, 5),
+        part_index: idx,
+        start_time: secondsToHHMMSS(cur),
+        end_time: secondsToHHMMSS(end),
+        output_filename: `${cleanBase}_Part_${idx}.mp4`
+      });
+      idx++;
+      cur = end;
+    }
+    return segs;
+  };
+
+  const handleSelectSplitVideo = async (filePathOrName, displayName) => {
+    setSplitVideoPath(filePathOrName);
+    setSplitVideoName(displayName);
+    setSplitResults(null);
+    setShowSplitPicker(false);
+    try {
+      const res = await fetch(`/api/video/probe?filename=${encodeURIComponent(filePathOrName)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const dur = data.metadata?.duration || 0;
+        setSplitDuration(dur);
+        const segs = autoCalculateSplitSegments(dur, splitTargetMins, displayName);
+        setSplitSegments(segs);
+        return;
+      }
+    } catch (e) {
+      console.warn('Probe failed:', e);
+    }
+    const videoEl = document.querySelector('video');
+    const dur = (videoEl && videoEl.duration && !isNaN(videoEl.duration)) ? videoEl.duration : 4800;
+    setSplitDuration(dur);
+    const segs = autoCalculateSplitSegments(dur, splitTargetMins, displayName);
+    setSplitSegments(segs);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'split' && !splitVideoPath) {
+      const activeQueueItem = queue && queue.length > 0 ? (queue.find((q) => q.id === selectedQueueIds?.[0]) || queue[0]) : null;
+      const activeName = activeQueueItem?.name || activeQueueItem?.serverFilename || 'Video.mp4';
+      const activePath = activeQueueItem?.filePath || activeQueueItem?.serverFilename || videoUrl || null;
+      if (activePath) {
+        handleSelectSplitVideo(activePath, activeName);
+      }
+    }
+  }, [activeTab, splitVideoPath, queue, videoUrl]);
+
+  const handleRecalculateSplit = (targetMins) => {
+    setSplitTargetMins(targetMins);
+    const segs = autoCalculateSplitSegments(splitDuration, targetMins, splitVideoName);
+    setSplitSegments(segs);
+  };
+
+  const handleUpdateSegmentTime = (index, field, value) => {
+    setSplitSegments((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      if (splitSyncAdjacent && field === 'end_time' && index < updated.length - 1) {
+        updated[index + 1] = { ...updated[index + 1], start_time: value };
+      }
+      return updated;
+    });
+  };
+
+  const handleSetSegmentTimeFromPlayer = (index, field) => {
+    const formatted = secondsToHHMMSS(currentTime);
+    handleUpdateSegmentTime(index, field, formatted);
+  };
+
+  const handleAddSplitSegment = () => {
+    const lastSeg = splitSegments[splitSegments.length - 1];
+    const newStart = lastSeg ? lastSeg.end_time : '00:00:00';
+    const newStartSec = HHMMSSToSeconds(newStart);
+    const segDur = Math.max(60, (splitTargetMins || 30) * 60);
+    const newEndSec = (splitDuration && splitDuration > newStartSec)
+      ? Math.min(splitDuration, newStartSec + segDur)
+      : newStartSec + segDur;
+    const nextIdx = splitSegments.length + 1;
+    const cleanBase = (splitVideoName || 'Video').replace(/\.[^/.]+$/, '').replace(/_dubbed$/, '').replace(/^mk_sub_/, '').trim() || 'Video';
+
+    setSplitSegments((prev) => [
+      ...prev,
+      {
+        id: 'seg_' + nextIdx + '_' + Math.random().toString(36).substr(2, 5),
+        part_index: nextIdx,
+        start_time: newStart,
+        end_time: secondsToHHMMSS(newEndSec),
+        output_filename: `${cleanBase}_Part_${nextIdx}.mp4`
+      }
+    ]);
+  };
+
+  const handleRemoveSplitSegment = (id) => {
+    if (splitSegments.length <= 1) return;
+    setSplitSegments((prev) => {
+      const filtered = prev.filter((s) => s.id !== id);
+      return filtered.map((s, i) => ({ ...s, part_index: i + 1 }));
+    });
+  };
+
+  const handleExecuteSplit = async () => {
+    if (!splitVideoPath) {
+      alert('Please choose a video file to split.');
+      return;
+    }
+    if (splitSegments.length === 0) {
+      alert('Please configure at least one segment to split.');
+      return;
+    }
+
+    // Auto-sanitize and validate split segments
+    for (let i = 0; i < splitSegments.length; i++) {
+      const seg = splitSegments[i];
+      const sSec = HHMMSSToSeconds(seg.start_time);
+      const eSec = HHMMSSToSeconds(seg.end_time);
+      if (eSec > 0 && eSec <= sSec) {
+        if (i === splitSegments.length - 1 && splitDuration > sSec) {
+          seg.end_time = secondsToHHMMSS(splitDuration);
+        } else {
+          alert(`Segment ${i + 1} (${seg.output_filename}): End time (${seg.end_time}) must be after start time (${seg.start_time}).`);
+          return;
+        }
+      }
+    }
+
+    setIsSplitting(true);
+    setSplitProgress(10);
+    setSplitStatusText('Preparing video split...');
+    const jobId = 'split_' + Math.random().toString(36).substr(2, 9);
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const pRes = await fetch(`/api/render/progress/${jobId}`);
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          if (pData.progress) setSplitProgress(pData.progress);
+          if (pData.message) setSplitStatusText(pData.message);
+        }
+      } catch (e) {}
+    }, 800);
+
+    try {
+      const res = await fetch('/api/render/split', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_filename: splitVideoPath,
+          segments: splitSegments.map((s) => ({
+            start_time: s.start_time,
+            end_time: s.end_time,
+            output_filename: s.output_filename
+          })),
+          job_id: jobId
+        })
+      });
+
+      clearInterval(pollInterval);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Video splitting failed.');
+      }
+
+      const data = await res.json();
+      setSplitProgress(100);
+      setSplitResults(data.results || []);
+      setSplitStatusText(`Successfully created ${data.results?.length || 0} split videos!`);
+    } catch (err) {
+      clearInterval(pollInterval);
+      alert('Split error: ' + err.message);
+    } finally {
+      setIsSplitting(false);
+    }
+  };
 
   // Check if any subtitle item has Khmer TTS voice generated
   const hasKhmerVoice = React.useMemo(() => {
@@ -373,11 +728,237 @@ export default function ExportModal({
   const [watermarkMargin, setWatermarkMargin] = useState(20); // 10 - 60 px
   const [autoPurgeCache, setAutoPurgeCache] = useState(true);
 
-  // 1. Delogo / Foreign Subtitles Cover Strip
-  const [enableDelogo, setEnableDelogo] = useState(false);
-  const [delogoMode, setDelogoMode] = useState('blur'); // 'blur' | 'black_bar'
-  const [delogoArea, setDelogoArea] = useState('bottom_subtitles'); // 'bottom_subtitles' | 'top_banner'
-  const [delogoHeightPct, setDelogoHeightPct] = useState(14); // 8 - 30%
+  // 1. Shape Blur & Delogo / Foreign Subtitles & Watermarks Cover Strip
+  const [enableDelogo, setEnableDelogo] = useState(subSettings?.enableDelogo || false);
+  const [delogoMode, setDelogoMode] = useState(subSettings?.delogoMode || 'blur'); // 'blur' | 'pixelate' | 'black_bar' | 'frosted'
+  const [delogoArea, setDelogoArea] = useState(subSettings?.delogoArea || 'bottom_subtitles'); // 'bottom_subtitles' | 'top_banner' | 'top_right' | 'top_left' | 'custom'
+  const [delogoHeightPct, setDelogoHeightPct] = useState(subSettings?.delogoHeightPct !== undefined ? subSettings.delogoHeightPct : 14); // 3 - 60%
+  const [delogoXPct, setDelogoXPct] = useState(subSettings?.delogoXPct !== undefined ? subSettings.delogoXPct : 0); // 0 - 95%
+  const [delogoYPct, setDelogoYPct] = useState(subSettings?.delogoYPct !== undefined ? subSettings.delogoYPct : 86); // 0 - 95%
+  const [delogoWPct, setDelogoWPct] = useState(subSettings?.delogoWPct !== undefined ? subSettings.delogoWPct : 100); // 4 - 100%
+  const [delogoShape, setDelogoShape] = useState(subSettings?.delogoShape || 'rectangle'); // 'rectangle' | 'pill'
+
+  // Video Preview Player State
+  const previewVideoRef = useRef(null);
+  const previewContainerRef = useRef(null);
+  const videoFileInputRef = useRef(null);
+  const [localVideoUrl, setLocalVideoUrl] = useState(null);
+  const [selectedQueueIndex, setSelectedQueueIndex] = useState(0);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const [previewCurrentTime, setPreviewCurrentTime] = useState(currentTime || 0);
+  const [previewDuration, setPreviewDuration] = useState(0);
+  const [isPreviewMuted, setIsPreviewMuted] = useState(true);
+
+  // Compute effective real-time video URL from local file, prop, or queue items
+  const activeVideoSrc = useMemo(() => {
+    if (localVideoUrl) return localVideoUrl;
+    if (videoUrl) return videoUrl;
+    if (queue && queue.length > 0) {
+      const q = queue[selectedQueueIndex] || queue[0];
+      if (q?.url) return q.url;
+      if (q?.file instanceof File || q?.file instanceof Blob) {
+        try {
+          return URL.createObjectURL(q.file);
+        } catch {
+          // ignore
+        }
+      }
+      if (q?.serverFilename) return `/api/video/${q.serverFilename}`;
+    }
+    return null;
+  }, [localVideoUrl, videoUrl, queue, selectedQueueIndex]);
+
+  const handleSelectLocalPreviewVideo = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setLocalVideoUrl(url);
+    }
+  };
+
+  // Dragging & Resizing Shape Blur Box
+  const [isDraggingBlur, setIsDraggingBlur] = useState(false);
+  const [isResizingBlur, setIsResizingBlur] = useState(false);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, startX: 0, startY: 0, startW: 0, startH: 0 });
+
+  // Sync preview player with video URL and initial currentTime
+  useEffect(() => {
+    if (previewVideoRef.current && currentTime !== undefined) {
+      previewVideoRef.current.currentTime = currentTime;
+      setPreviewCurrentTime(currentTime);
+    }
+  }, [isOpen, currentTime]);
+
+  const togglePreviewPlay = () => {
+    if (!previewVideoRef.current) return;
+    if (isPlayingPreview) {
+      previewVideoRef.current.pause();
+      setIsPlayingPreview(false);
+    } else {
+      previewVideoRef.current.play().then(() => setIsPlayingPreview(true)).catch(() => {});
+    }
+  };
+
+  const handlePreviewSeek = (timeSec) => {
+    if (previewVideoRef.current) {
+      previewVideoRef.current.currentTime = timeSec;
+      setPreviewCurrentTime(timeSec);
+    }
+  };
+
+  // Dynamic subtitle text matching current preview time
+  const currentSubtitleText = React.useMemo(() => {
+    if (subtitleMode === 'none') return '';
+    if (subtitles && subtitles.length > 0) {
+      const activeItem = subtitles.find(
+        (s) => previewCurrentTime >= s.start_time && previewCurrentTime <= s.end_time
+      );
+      if (activeItem) {
+        if (subtitleMode === 'original') return activeItem.text;
+        return activeItem.translated_text || activeItem.text;
+      }
+    }
+    return sampleSubtitleText;
+  }, [subtitles, subtitleMode, previewCurrentTime, sampleSubtitleText]);
+
+  const applyDelogoPreset = (preset) => {
+    let newX = delogoXPct;
+    let newY = delogoYPct;
+    let newW = delogoWPct;
+    let newH = delogoHeightPct;
+    if (preset === 'bottom_subtitles') {
+      newX = 0;
+      newY = 86;
+      newW = 100;
+      newH = 14;
+    } else if (preset === 'top_banner') {
+      newX = 0;
+      newY = 0;
+      newW = 100;
+      newH = 14;
+    } else if (preset === 'top_right') {
+      newX = 76;
+      newY = 0;
+      newW = 24;
+      newH = 13;
+    } else if (preset === 'top_left') {
+      newX = 0;
+      newY = 0;
+      newW = 24;
+      newH = 13;
+    } else if (preset === 'custom') {
+      if (delogoWPct === 100 && delogoXPct === 0 && delogoYPct === 86) {
+        newX = 35;
+        newY = 75;
+        newW = 30;
+        newH = 15;
+      }
+    }
+    setDelogoArea(preset);
+    setDelogoXPct(newX);
+    setDelogoYPct(newY);
+    setDelogoWPct(newW);
+    setDelogoHeightPct(newH);
+    updateSettings({
+      delogoArea: preset,
+      delogoXPct: newX,
+      delogoYPct: newY,
+      delogoWPct: newW,
+      delogoHeightPct: newH
+    });
+  };
+
+  const handleBlurMouseDown = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsDraggingBlur(true);
+    setDelogoArea('custom');
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startX: delogoXPct,
+      startY: delogoYPct,
+      startW: delogoWPct,
+      startH: delogoHeightPct,
+      latest: { delogoArea: 'custom', delogoXPct, delogoYPct, delogoWPct, delogoHeightPct }
+    };
+  };
+
+  const handleResizeMouseDown = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsResizingBlur(true);
+    setDelogoArea('custom');
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startX: delogoXPct,
+      startY: delogoYPct,
+      startW: delogoWPct,
+      startH: delogoHeightPct,
+      latest: { delogoArea: 'custom', delogoXPct, delogoYPct, delogoWPct, delogoHeightPct }
+    };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDraggingBlur && !isResizingBlur) return;
+      const container = previewContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      const deltaXPercent = ((e.clientX - dragStartRef.current.mouseX) / rect.width) * 100;
+      const deltaYPercent = ((e.clientY - dragStartRef.current.mouseY) / rect.height) * 100;
+
+      if (isDraggingBlur) {
+        const curW = dragStartRef.current.startW;
+        const curH = dragStartRef.current.startH;
+        const newX = Math.max(0, Math.min(100 - curW, Math.round(dragStartRef.current.startX + deltaXPercent)));
+        const newY = Math.max(0, Math.min(100 - curH, Math.round(dragStartRef.current.startY + deltaYPercent)));
+        setDelogoXPct(newX);
+        setDelogoYPct(newY);
+        dragStartRef.current.latest = {
+          delogoArea: 'custom',
+          delogoXPct: newX,
+          delogoYPct: newY,
+          delogoWPct: curW,
+          delogoHeightPct: curH
+        };
+      } else if (isResizingBlur) {
+        const curX = dragStartRef.current.startX;
+        const curY = dragStartRef.current.startY;
+        const newW = Math.max(5, Math.min(100 - curX, Math.round(dragStartRef.current.startW + deltaXPercent)));
+        const newH = Math.max(3, Math.min(100 - curY, Math.round(dragStartRef.current.startH + deltaYPercent)));
+        setDelogoWPct(newW);
+        setDelogoHeightPct(newH);
+        dragStartRef.current.latest = {
+          delogoArea: 'custom',
+          delogoXPct: curX,
+          delogoYPct: curY,
+          delogoWPct: newW,
+          delogoHeightPct: newH
+        };
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingBlur(false);
+      setIsResizingBlur(false);
+      if (dragStartRef.current?.latest) {
+        updateSettings(dragStartRef.current.latest);
+      }
+    };
+
+    if (isDraggingBlur || isResizingBlur) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingBlur, isResizingBlur]);
 
   // 2. Anti-Copyright Safe Shield (Content-ID Bypass)
   const [enableAntiCopyright, setEnableAntiCopyright] = useState(false);
@@ -435,7 +1016,16 @@ export default function ExportModal({
 
   return (
     <div className="modal-overlay">
-      <div className="modal-card" style={{ maxHeight: '92vh', overflowY: 'auto' }}>
+      <div
+        className="modal-card"
+        style={{
+          maxWidth: '960px',
+          width: '95vw',
+          maxHeight: '94vh',
+          overflowY: 'auto',
+          padding: '22px 24px'
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', gap: '8px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -508,6 +1098,27 @@ export default function ExportModal({
               >
                 <Layers size={12} />
                 <span>Merge Files</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('split')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: 'none',
+                  backgroundColor: activeTab === 'split' ? 'rgba(168, 85, 247, 0.2)' : 'transparent',
+                  color: activeTab === 'split' ? '#c084fc' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+              >
+                <Scissors size={12} />
+                <span>Split Video</span>
               </button>
             </div>
           </div>
@@ -716,6 +1327,27 @@ export default function ExportModal({
                 <FolderCheck size={13} style={{ color: '#34d399' }} />
                 <span>+ Add from Rendered Exports</span>
               </button>
+
+              {mergeFiles.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMergeFiles((prev) => {
+                      const sorted = [...prev].sort((a, b) => {
+                        return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' });
+                      });
+                      return sorted;
+                    });
+                  }}
+                  disabled={isMerging}
+                  className="btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '7px 12px' }}
+                  title="Automatically sort all episodes numerically by episode number (Ep 1, Ep 2, ... Ep 10)"
+                >
+                  <ArrowUpDown size={13} style={{ color: '#38bdf8' }} />
+                  <span>Sort Episodes (1-9)</span>
+                </button>
+              )}
 
               {mergeFiles.length > 0 && (
                 <button
@@ -965,6 +1597,456 @@ export default function ExportModal({
               </button>
             </div>
           </div>
+        ) : activeTab === 'split' ? (
+          /* ================= Split Video Form ================= */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Split Banner */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                backgroundColor: 'rgba(168, 85, 247, 0.08)',
+                border: '1px solid rgba(168, 85, 247, 0.25)',
+                borderRadius: '10px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#c084fc'
+                  }}
+                >
+                  <Scissors size={18} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-bright)' }}>
+                    Interactive Video Splitter & Part Generator
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Slice 1 long video into custom 30-minute parts with editable timestamps and fast lossless export.
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Current Playhead:</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '3px 8px', borderRadius: '6px' }}>
+                  ⏱️ {secondsToHHMMSS(currentTime)}
+                </span>
+              </div>
+            </div>
+
+            {/* Success Result View if split finished */}
+            {splitResults && (
+              <div
+                style={{
+                  padding: '16px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#34d399', fontWeight: 600, fontSize: '14px' }}>
+                  <CheckCircle2 size={18} />
+                  <span>Successfully Split into {splitResults.length} Videos!</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                  {splitResults.map((r) => (
+                    <div
+                      key={r.filename}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                        borderRadius: '6px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                        <span style={{ fontWeight: 700, color: '#c084fc' }}>Part {r.part_index}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-bright)' }}>{r.filename}</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>({r.start_time} ➔ {r.end_time} · {r.size_mb} MB)</span>
+                      </div>
+                      <a
+                        href={r.download_url}
+                        download={r.filename}
+                        className="btn-primary"
+                        style={{ fontSize: '11px', padding: '4px 10px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
+                      >
+                        <Download size={12} />
+                        <span>Download</span>
+                      </a>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await fetch('/api/exports/open-folder', { method: 'POST' });
+                      } catch (e) {
+                        console.warn(e);
+                      }
+                    }}
+                    className="btn-secondary"
+                    style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <FolderCheck size={14} style={{ color: '#34d399' }} />
+                    <span>Open in Folder</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSplitResults(null)}
+                    className="btn-secondary"
+                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    Adjust Times & Re-split
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Target Video File Selector */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  Selected Video File to Split:
+                </label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="file"
+                    accept="video/*"
+                    ref={splitFileInputRef}
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        const f = e.target.files[0];
+                        const formData = new FormData();
+                        formData.append('file', f);
+                        const res = await fetch('/api/upload/video', { method: 'POST', body: formData });
+                        if (res.ok) {
+                          const data = await res.json();
+                          handleSelectSplitVideo(data.filename, f.name);
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => splitFileInputRef.current?.click()}
+                    className="btn-secondary"
+                    style={{ fontSize: '11px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <FolderOpen size={12} />
+                    <span>Upload Local File</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFetchExports}
+                    className="btn-secondary"
+                    style={{ fontSize: '11px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <FolderCheck size={12} style={{ color: '#34d399' }} />
+                    <span>From Exports</span>
+                  </button>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  fontSize: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                  <Film size={15} style={{ color: '#c084fc', flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, color: 'var(--text-bright)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {splitVideoName || 'No video loaded yet'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '12px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Duration:</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8' }}>
+                    {secondsToHHMMSS(splitDuration)} ({Math.round(splitDuration / 60)} min)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Duration Preset & Auto-Divide Controls */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--bg-base)',
+                border: '1px solid var(--border-color)',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Target Duration:</span>
+                {[15, 20, 30, 45, 60].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => handleRecalculateSplit(m)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      border: `1px solid ${splitTargetMins === m ? '#c084fc' : 'var(--border-color)'}`,
+                      backgroundColor: splitTargetMins === m ? 'rgba(168, 85, 247, 0.2)' : 'var(--bg-tertiary)',
+                      color: splitTargetMins === m ? '#ffffff' : 'var(--text-muted)',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {m} min
+                  </button>
+                ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '4px' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    max="600"
+                    value={splitTargetMins}
+                    onChange={(e) => setSplitTargetMins(parseInt(e.target.value) || 30)}
+                    style={{ width: '48px', padding: '3px 6px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-bright)', textAlign: 'center' }}
+                  />
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>min</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRecalculateSplit(splitTargetMins)}
+                    className="btn-secondary"
+                    style={{ fontSize: '11px', padding: '3px 8px', marginLeft: '4px' }}
+                    title="Recalculate split parts based on this minute duration"
+                  >
+                    <RefreshCw size={11} /> Auto-Divide
+                  </button>
+                </div>
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={splitSyncAdjacent}
+                  onChange={(e) => setSplitSyncAdjacent(e.target.checked)}
+                  style={{ accentColor: '#c084fc' }}
+                />
+                Sync adjacent cut points (editing End time updates next Part Start)
+              </label>
+            </div>
+
+            {/* Interactive Segments List */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  Configured Split Parts ({splitSegments.length} parts):
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddSplitSegment}
+                  className="btn-secondary"
+                  style={{ fontSize: '11px', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px', color: '#c084fc' }}
+                >
+                  <Plus size={12} />
+                  <span>Add Split Part</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
+                {splitSegments.map((seg, idx) => {
+                  const sSec = HHMMSSToSeconds(seg.start_time);
+                  const eSec = HHMMSSToSeconds(seg.end_time);
+                  const segDur = Math.max(0, eSec - sSec);
+                  return (
+                    <div
+                      key={seg.id || idx}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                          <span
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              backgroundColor: 'rgba(168, 85, 247, 0.25)',
+                              color: '#c084fc',
+                              fontWeight: 700,
+                              fontSize: '11px',
+                              flexShrink: 0
+                            }}
+                          >
+                            Part {idx + 1}
+                          </span>
+                          <input
+                            type="text"
+                            value={seg.output_filename}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setSplitSegments((prev) => {
+                                const copy = [...prev];
+                                copy[idx] = { ...copy[idx], output_filename: v };
+                                return copy;
+                              });
+                            }}
+                            placeholder={`Part_${idx + 1}.mp4`}
+                            style={{
+                              flex: 1,
+                              padding: '4px 8px',
+                              fontSize: '12px',
+                              backgroundColor: 'var(--bg-base)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '6px',
+                              color: 'var(--text-bright)'
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                          <span style={{ fontSize: '11px', fontWeight: 600, color: '#38bdf8' }}>
+                            ⏱️ {secondsToHHMMSS(segDur)} ({Math.round(segDur / 60)}m)
+                          </span>
+                          {splitSegments.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSplitSegment(seg.id)}
+                              className="btn-secondary"
+                              style={{ padding: '3px 6px', color: '#f87171' }}
+                              title="Delete this segment"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Time Controls */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '11px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>Start:</span>
+                          <input
+                            type="text"
+                            value={seg.start_time}
+                            onChange={(e) => handleUpdateSegmentTime(idx, 'start_time', e.target.value)}
+                            style={{ width: '75px', padding: '3px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-base)', color: 'var(--text-bright)', textAlign: 'center', fontFamily: 'monospace' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSetSegmentTimeFromPlayer(idx, 'start_time')}
+                            className="btn-secondary"
+                            style={{ padding: '3px 6px', fontSize: '10px', color: '#f59e0b' }}
+                            title="Stamp current video player position into Start Time"
+                          >
+                            📍 Player ({formatTime(currentTime)})
+                          </button>
+                        </div>
+
+                        <span style={{ color: 'var(--text-muted)' }}>──►</span>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>End:</span>
+                          <input
+                            type="text"
+                            value={seg.end_time}
+                            onChange={(e) => handleUpdateSegmentTime(idx, 'end_time', e.target.value)}
+                            style={{ width: '75px', padding: '3px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-base)', color: 'var(--text-bright)', textAlign: 'center', fontFamily: 'monospace' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSetSegmentTimeFromPlayer(idx, 'end_time')}
+                            className="btn-secondary"
+                            style={{ padding: '3px 6px', fontSize: '10px', color: '#f59e0b' }}
+                            title="Stamp current video player position into End Time"
+                          >
+                            📍 Player ({formatTime(currentTime)})
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Progress Bar if splitting */}
+            {isSplitting && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 14px', borderRadius: '8px', backgroundColor: 'rgba(168, 85, 247, 0.1)', border: '1px solid rgba(168, 85, 247, 0.25)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#c084fc' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Loader2 size={12} className="animate-spin" />
+                    <span>{splitStatusText || 'Splitting video segments...'}</span>
+                  </span>
+                  <span style={{ fontWeight: 600 }}>{splitProgress}%</span>
+                </div>
+                <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ width: `${splitProgress}%`, height: '100%', backgroundColor: '#c084fc', transition: 'width 0.3s ease' }} />
+                </div>
+              </div>
+            )}
+
+            {/* Footer Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
+              <button onClick={onClose} className="btn-secondary" disabled={isSplitting}>
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteSplit}
+                disabled={splitSegments.length === 0 || isSplitting}
+                className="btn-primary"
+                style={{
+                  background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+                  boxShadow: '0 4px 14px rgba(124, 58, 237, 0.4)',
+                  minWidth: '220px',
+                  justifyContent: 'center'
+                }}
+              >
+                {isSplitting ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Splitting Video ({splitProgress}%)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Scissors size={14} />
+                    <span>Split & Export ({splitSegments.length} Parts · Fast Lossless)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         ) : activeTab === 'subs' ? (
           /* ================= Subtitle Export Form ================= */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1074,7 +2156,7 @@ export default function ExportModal({
                   <div style={{ textAlign: 'center' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Subtitle Font: </span>
                     <strong style={{ color: '#38bdf8' }}>{fontName}</strong>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}> ({fontSize}px • {stylePreset === 'modern_yellow' ? 'Yellow' : stylePreset === 'box_dark' ? 'Dark Box' : 'White'})</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}> ({fontSize}px • {stylePreset === 'modern_yellow' ? 'Yellow' : stylePreset === 'box_yellow' ? 'Dark Box Yellow' : stylePreset === 'box_dark' ? 'Dark Box White' : 'White'})</span>
                   </div>
                 </div>
 
@@ -1281,7 +2363,7 @@ export default function ExportModal({
                           <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                             Batch Output Format:
                           </label>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
                             <button
                               type="button"
                               onClick={() => setBatchOutputMode('separate')}
@@ -1301,7 +2383,29 @@ export default function ExportModal({
                                 transition: 'all 0.15s ease'
                               }}
                             >
-                              <span>📁 Separate Episode Files ({targetBatchCount})</span>
+                              <span>📁 Separate ({targetBatchCount})</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setBatchOutputMode('chunk')}
+                              style={{
+                                padding: '7px 8px',
+                                borderRadius: '6px',
+                                border: `1px solid ${batchOutputMode === 'chunk' ? '#c084fc' : 'var(--border-color)'}`,
+                                backgroundColor: batchOutputMode === 'chunk' ? 'rgba(168, 85, 247, 0.15)' : 'var(--bg-base)',
+                                color: batchOutputMode === 'chunk' ? '#c084fc' : 'var(--text-muted)',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <span>⏱️ Chunk Parts ({chunkGroups.length || '30m'})</span>
                             </button>
 
                             <button
@@ -1323,7 +2427,7 @@ export default function ExportModal({
                                 transition: 'all 0.15s ease'
                               }}
                             >
-                              <span>🎞️ Combine into 1 Video (Full Movie)</span>
+                              <span>🎞️ Combine All (1 Movie)</span>
                             </button>
                           </div>
                         </div>
@@ -1332,21 +2436,41 @@ export default function ExportModal({
                         <div
                           style={{
                             padding: '8px 12px',
-                            backgroundColor: batchOutputMode === 'combine' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                            border: `1px solid ${batchOutputMode === 'combine' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                            backgroundColor: batchOutputMode === 'combine'
+                              ? 'rgba(16, 185, 129, 0.1)'
+                              : batchOutputMode === 'chunk'
+                                ? 'rgba(168, 85, 247, 0.1)'
+                                : 'rgba(239, 68, 68, 0.1)',
+                            border: `1px solid ${
+                              batchOutputMode === 'combine'
+                                ? 'rgba(16, 185, 129, 0.3)'
+                                : batchOutputMode === 'chunk'
+                                  ? 'rgba(168, 85, 247, 0.3)'
+                                  : 'rgba(239, 68, 68, 0.3)'
+                            }`,
                             borderRadius: '8px',
                             fontSize: '11px',
-                            color: batchOutputMode === 'combine' ? '#6ee7b7' : '#fca5a5',
+                            color: batchOutputMode === 'combine'
+                              ? '#6ee7b7'
+                              : batchOutputMode === 'chunk'
+                                ? '#e9d5ff'
+                                : '#fca5a5',
                             display: 'flex',
                             alignItems: 'flex-start',
                             gap: '8px'
                           }}
                         >
-                          <span style={{ fontSize: '14px' }}>{batchOutputMode === 'combine' ? '🎞️' : '⚡'}</span>
+                          <span style={{ fontSize: '14px' }}>
+                            {batchOutputMode === 'combine' ? '🎞️' : batchOutputMode === 'chunk' ? '⏱️' : '⚡'}
+                          </span>
                           <div style={{ lineHeight: 1.4 }}>
                             {batchOutputMode === 'combine' ? (
                               <>
                                 <strong>1-Click Full Movie Merger:</strong> All <strong>{targetBatchCount} videos</strong> will be processed (transcribed, Khmer AI dubbed, subtitles burned) and then <strong>automatically stitched into 1 seamless full movie video</strong>!
+                              </>
+                            ) : batchOutputMode === 'chunk' ? (
+                              <>
+                                <strong>Target Duration Chunking:</strong> Episodes will be processed and automatically bundled into <strong>~{chunkTargetMins}-minute composite videos</strong> (e.g. Part 1, Part 2). You can adjust which episodes belong to which part below!
                               </>
                             ) : (
                               <>
@@ -1355,6 +2479,121 @@ export default function ExportModal({
                             )}
                           </div>
                         </div>
+
+                        {/* Chunk Grouping Settings */}
+                        {batchOutputMode === 'chunk' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: 'var(--bg-base)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)' }}>Target Duration per Part:</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {[15, 20, 30, 45].map((mins) => (
+                                  <button
+                                    key={mins}
+                                    type="button"
+                                    onClick={() => setChunkTargetMins(mins)}
+                                    style={{
+                                      padding: '3px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      border: `1px solid ${chunkTargetMins === mins ? '#c084fc' : 'var(--border-color)'}`,
+                                      backgroundColor: chunkTargetMins === mins ? 'rgba(168, 85, 247, 0.2)' : 'var(--bg-tertiary)',
+                                      color: chunkTargetMins === mins ? '#ffffff' : 'var(--text-muted)'
+                                    }}
+                                  >
+                                    {mins}m
+                                  </button>
+                                ))}
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="300"
+                                  value={chunkTargetMins}
+                                  onChange={(e) => setChunkTargetMins(parseInt(e.target.value) || 30)}
+                                  style={{ width: '40px', padding: '2px 4px', fontSize: '10px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-bright)', textAlign: 'center' }}
+                                />
+                                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>min</span>
+                              </div>
+                            </div>
+
+                            {/* Parts List */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                              {chunkGroups.map((grp, gIdx) => {
+                                const epCount = grp.item_indices.length;
+                                const firstEpNum = grp.item_indices[0] !== undefined ? grp.item_indices[0] + 1 : 1;
+                                const lastEpNum = grp.item_indices[epCount - 1] !== undefined ? grp.item_indices[epCount - 1] + 1 : firstEpNum;
+                                return (
+                                  <div
+                                    key={grp.id || gIdx}
+                                    style={{
+                                      padding: '8px 10px',
+                                      borderRadius: '6px',
+                                      backgroundColor: 'var(--bg-tertiary)',
+                                      border: '1px solid var(--border-color)',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '6px',
+                                      fontSize: '11px'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                                        <span style={{ fontWeight: 700, color: '#c084fc', backgroundColor: 'rgba(168, 85, 247, 0.2)', padding: '2px 6px', borderRadius: '4px', flexShrink: 0 }}>
+                                          Part {grp.part_index}
+                                        </span>
+                                        <input
+                                          type="text"
+                                          value={grp.custom_filename}
+                                          onChange={(e) => updateChunkGroupFilename(gIdx, e.target.value)}
+                                          placeholder={`Part_${grp.part_index}.mp4`}
+                                          style={{
+                                            flex: 1,
+                                            padding: '3px 6px',
+                                            fontSize: '11px',
+                                            borderRadius: '4px',
+                                            border: '1px solid var(--border-color)',
+                                            backgroundColor: 'var(--bg-base)',
+                                            color: 'var(--text-bright)'
+                                          }}
+                                        />
+                                      </div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                        <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+                                          ⏱️ ~{Math.round(grp.total_sec / 60)}m ({epCount} eps: Ep {firstEpNum}-{lastEpNum})
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px' }}>
+                                      {gIdx > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => pullEpisodeToPrevGroup(gIdx)}
+                                          className="btn-secondary"
+                                          style={{ fontSize: '10px', padding: '2px 6px' }}
+                                          title={`Move Ep ${firstEpNum} to Part ${gIdx}`}
+                                        >
+                                          ⬆️ Pull Ep {firstEpNum} to Part {gIdx}
+                                        </button>
+                                      )}
+                                      {gIdx < chunkGroups.length - 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => pushEpisodeToNextGroup(gIdx)}
+                                          className="btn-secondary"
+                                          style={{ fontSize: '10px', padding: '2px 6px' }}
+                                          title={`Move Ep ${lastEpNum} to Part ${gIdx + 2}`}
+                                        >
+                                          ⬇️ Push Ep {lastEpNum} to Part {gIdx + 2}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         {/* If combine mode is active, allow customizing the combined filename */}
                         {batchOutputMode === 'combine' && (
@@ -1409,91 +2648,311 @@ export default function ExportModal({
                     </span>
                   </div>
 
-                  {/* Simulated Video Live Preview Screen */}
+                  {/* Enhanced Widescreen Video Player Live Preview Screen */}
                   <div
+                    ref={previewContainerRef}
                     style={{
                       position: 'relative',
                       width: '100%',
-                      height: '125px',
-                      backgroundColor: '#0a0d14',
-                      backgroundImage: 'radial-gradient(circle at 50% 40%, #1e293b 0%, #090d16 85%)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      height: '340px',
+                      backgroundColor: '#04060a',
+                      backgroundImage: activeVideoSrc ? 'none' : 'radial-gradient(circle at 50% 45%, #1e293b 0%, #060913 90%)',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(255, 255, 255, 0.14)',
                       overflow: 'hidden',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      userSelect: 'none'
+                      userSelect: 'none',
+                      boxShadow: 'inset 0 0 24px rgba(0,0,0,0.85)'
                     }}
                   >
-                    {/* Top-left label */}
+                    {/* Live Video Player Element */}
+                    {activeVideoSrc ? (
+                      <video
+                        ref={previewVideoRef}
+                        src={activeVideoSrc}
+                        playsInline
+                        muted={isPreviewMuted}
+                        onTimeUpdate={(e) => setPreviewCurrentTime(e.target.currentTime)}
+                        onLoadedMetadata={(e) => {
+                          setPreviewDuration(e.target.duration);
+                          if (currentTime && currentTime > 0) {
+                            e.target.currentTime = currentTime;
+                            setPreviewCurrentTime(currentTime);
+                          }
+                        }}
+                        onEnded={() => setIsPlayingPreview(false)}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'contain',
+                          pointerEvents: 'none'
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '10px',
+                          color: 'rgba(255, 255, 255, 0.45)',
+                          userSelect: 'none',
+                          zIndex: 3
+                        }}
+                      >
+                        <Film size={40} style={{ opacity: 0.7, color: '#38bdf8' }} />
+                        <div style={{ textAlign: 'center' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-bright)', display: 'block' }}>
+                            Studio Cinema Screen (16:9 Canvas)
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            Load a video file to watch playback and tune Shape Blur in real-time
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => videoFileInputRef.current && videoFileInputRef.current.click()}
+                          style={{
+                            padding: '7px 16px',
+                            borderRadius: '6px',
+                            backgroundColor: '#0284c7',
+                            color: '#fff',
+                            border: 'none',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(2, 132, 199, 0.4)'
+                          }}
+                        >
+                          <Upload size={14} />
+                          <span>Choose Video File for Real-Time Player</span>
+                        </button>
+                        <input
+                          type="file"
+                          ref={videoFileInputRef}
+                          accept="video/*"
+                          style={{ display: 'none' }}
+                          onChange={handleSelectLocalPreviewVideo}
+                        />
+                      </div>
+                    )}
+
+                    {/* Top-left label & mode */}
                     <div
                       style={{
                         position: 'absolute',
-                        top: '6px',
-                        left: '8px',
-                        fontSize: '9px',
-                        color: 'rgba(255,255,255,0.4)',
+                        top: '8px',
+                        left: '10px',
+                        fontSize: '10px',
+                        color: 'rgba(255,255,255,0.7)',
+                        backgroundColor: 'rgba(0,0,0,0.75)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '4px',
-                        zIndex: 3
+                        gap: '6px',
+                        zIndex: 7,
+                        backdropFilter: 'blur(6px)'
                       }}
                     >
-                      <Eye size={10} />
-                      <span>LIVE PREVIEW</span>
+                      <Eye size={12} style={{ color: '#38bdf8' }} />
+                      <span style={{ fontWeight: 600 }}>LIVE PREVIEW</span>
+                      {activeVideoSrc ? (
+                        <span style={{ color: '#10b981', fontSize: '9px', fontWeight: 600 }}>● REAL-TIME VIDEO</span>
+                      ) : (
+                        <span style={{ color: '#f59e0b', fontSize: '9px' }}>○ Template Canvas</span>
+                      )}
+
+                      {/* Episode selector dropdown if queue has multiple videos */}
+                      {queue && queue.length > 1 && (
+                        <select
+                          value={selectedQueueIndex}
+                          onChange={(e) => {
+                            setSelectedQueueIndex(parseInt(e.target.value));
+                            setLocalVideoUrl(null);
+                          }}
+                          style={{
+                            backgroundColor: 'rgba(255,255,255,0.12)',
+                            color: '#fff',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            padding: '1px 4px',
+                            cursor: 'pointer',
+                            marginLeft: '4px'
+                          }}
+                        >
+                          {queue.map((q, idx) => (
+                            <option key={idx} value={idx} style={{ backgroundColor: '#1e293b', color: '#fff' }}>
+                              Ep {idx + 1}: {q.name || q.serverFilename || `Video ${idx + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {/* Load / Change Video button */}
+                      <button
+                        type="button"
+                        onClick={() => videoFileInputRef.current && videoFileInputRef.current.click()}
+                        style={{
+                          background: 'rgba(255,255,255,0.12)',
+                          border: 'none',
+                          color: '#38bdf8',
+                          borderRadius: '4px',
+                          fontSize: '9px',
+                          fontWeight: 600,
+                          padding: '2px 6px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          marginLeft: '2px'
+                        }}
+                        title="Load or switch video file for real-time player preview"
+                      >
+                        <FolderOpen size={10} />
+                        <span>{activeVideoSrc ? 'Switch Video' : 'Load Video'}</span>
+                      </button>
                     </div>
 
-                    {/* Anti-Copyright Shield Active indicator badge */}
+                    {/* Top-right Anti-Copyright Shield indicator */}
                     {enableAntiCopyright && (
                       <div
                         style={{
                           position: 'absolute',
-                          top: '6px',
-                          right: addLogoWatermark && watermarkPosition === 'top_right' ? '75px' : '8px',
-                          fontSize: '8px',
+                          top: '8px',
+                          right: addLogoWatermark && watermarkPosition === 'top_right' ? '120px' : '10px',
+                          fontSize: '10px',
                           color: '#34d399',
-                          backgroundColor: 'rgba(5, 150, 105, 0.25)',
-                          border: '1px solid rgba(5, 150, 105, 0.45)',
-                          padding: '2px 5px',
-                          borderRadius: '4px',
+                          backgroundColor: 'rgba(5, 150, 105, 0.4)',
+                          border: '1px solid rgba(5, 150, 105, 0.6)',
+                          padding: '3px 8px',
+                          borderRadius: '5px',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '3px',
-                          zIndex: 3,
+                          gap: '4px',
+                          zIndex: 4,
                           fontWeight: 600,
-                          pointerEvents: 'none'
+                          pointerEvents: 'none',
+                          backdropFilter: 'blur(4px)'
                         }}
                       >
-                        <Shield size={9} />
+                        <Shield size={11} />
                         <span>SAFE SHIELD ({antiCopyrightSpeed}x)</span>
                       </div>
                     )}
 
-                    {/* Delogo Strip Live Preview */}
+                    {/* INTERACTIVE DRAGGABLE & RESIZABLE SHAPE BLUR BOX */}
                     {enableDelogo && (
                       <div
+                        onMouseDown={handleBlurMouseDown}
                         style={{
                           position: 'absolute',
-                          left: 0,
-                          right: 0,
-                          ...(delogoArea === 'top_banner'
-                            ? { top: 0, height: `${Math.max(10, Math.min(35, delogoHeightPct))}%` }
-                            : { bottom: 0, height: `${Math.max(10, Math.min(35, delogoHeightPct))}%` }),
-                          backgroundColor: delogoMode === 'black_bar' ? 'rgba(0, 0, 0, 0.88)' : 'rgba(30, 41, 59, 0.82)',
-                          backdropFilter: delogoMode === 'blur' ? 'blur(8px)' : 'none',
-                          borderTop: delogoArea === 'bottom_subtitles' ? '1px dashed #f59e0b' : 'none',
-                          borderBottom: delogoArea === 'top_banner' ? '1px dashed #f59e0b' : 'none',
+                          left: `${delogoXPct}%`,
+                          top: `${delogoYPct}%`,
+                          width: `${delogoWPct}%`,
+                          height: `${delogoHeightPct}%`,
+                          borderRadius: delogoShape === 'pill' ? '9999px' : '4px',
+                          cursor: isDraggingBlur ? 'grabbing' : 'grab',
+                          boxSizing: 'border-box',
+                          zIndex: 6,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          zIndex: 1,
-                          pointerEvents: 'none'
+                          userSelect: 'none',
+                          transition: isDraggingBlur || isResizingBlur ? 'none' : 'all 0.1s ease',
+                          ...(delogoMode === 'black_bar'
+                            ? {
+                                backgroundColor: 'rgba(0, 0, 0, 0.92)',
+                                border: '1.5px dashed #ef4444'
+                              }
+                            : delogoMode === 'pixelate'
+                            ? {
+                                backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                                backdropFilter: 'blur(2px)',
+                                backgroundImage: 'radial-gradient(rgba(255,255,255,0.7) 1px, transparent 1px), radial-gradient(rgba(0,0,0,0.8) 1px, transparent 1px)',
+                                backgroundSize: '8px 8px, 8px 8px',
+                                backgroundPosition: '0 0, 4px 4px',
+                                border: '1.5px dashed #38bdf8'
+                              }
+                            : delogoMode === 'frosted'
+                            ? {
+                                backgroundColor: 'rgba(0, 0, 0, 0.55)',
+                                backdropFilter: 'blur(10px) saturate(140%)',
+                                border: '1.5px dashed #a855f7'
+                              }
+                            : {
+                                backgroundColor: 'rgba(30, 41, 59, 0.55)',
+                                backdropFilter: 'blur(14px) saturate(160%)',
+                                border: '1.5px dashed #f59e0b'
+                              })
                         }}
+                        title="Click & Drag to move • Drag corner handle (↘) to resize"
                       >
-                        <span style={{ fontSize: '9px', color: '#fbbf24', fontWeight: 600, letterSpacing: '0.5px' }}>
-                          {delogoMode === 'blur' ? '🌫️ DELOGO BLUR STRIP' : '⬛ CINEMA COVER STRIP'}
-                        </span>
+                        {/* Blur Box Center Info Badge */}
+                        <div
+                          style={{
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            letterSpacing: '0.4px',
+                            color: delogoMode === 'black_bar' ? '#fca5a5' : delogoMode === 'pixelate' ? '#7dd3fc' : delogoMode === 'frosted' ? '#d8b4fe' : '#fde047',
+                            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            pointerEvents: 'none'
+                          }}
+                        >
+                          <Move size={9} />
+                          <span>
+                            {delogoMode === 'blur'
+                              ? '🌫️ BLUR'
+                              : delogoMode === 'pixelate'
+                              ? '🔲 PIXELATE'
+                              : delogoMode === 'frosted'
+                              ? '🧊 FROSTED'
+                              : '⬛ CINEMA BAR'}
+                          </span>
+                          <span style={{ opacity: 0.8, fontSize: '8px' }}>
+                            ({Math.round(delogoWPct)}% × {Math.round(delogoHeightPct)}%)
+                          </span>
+                        </div>
+
+                        {/* Bottom-right interactive resize grip */}
+                        <div
+                          onMouseDown={handleResizeMouseDown}
+                          style={{
+                            position: 'absolute',
+                            right: 0,
+                            bottom: 0,
+                            width: '18px',
+                            height: '18px',
+                            cursor: 'nwse-resize',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: '#f59e0b',
+                            color: '#000',
+                            borderRadius: '3px 0 3px 0',
+                            fontSize: '11px',
+                            fontWeight: 900,
+                            lineHeight: 1,
+                            userSelect: 'none',
+                            zIndex: 10,
+                            boxShadow: '0 0 6px rgba(0,0,0,0.6)'
+                          }}
+                          title="Drag corner to resize shape blur"
+                        >
+                          ↘
+                        </div>
                       </div>
                     )}
 
@@ -1503,60 +2962,61 @@ export default function ExportModal({
                         style={{
                           position: 'absolute',
                           ...(watermarkPosition === 'top_left'
-                            ? { top: `${Math.round(watermarkMargin * 0.25)}px`, left: `${Math.round(watermarkMargin * 0.25)}px` }
+                            ? { top: `${Math.round(watermarkMargin * 0.5)}px`, left: `${Math.round(watermarkMargin * 0.5)}px` }
                             : watermarkPosition === 'bottom_left'
-                            ? { bottom: `${Math.round(watermarkMargin * 0.25)}px`, left: `${Math.round(watermarkMargin * 0.25)}px` }
+                            ? { bottom: `${Math.round(watermarkMargin * 0.5 + 40)}px`, left: `${Math.round(watermarkMargin * 0.5)}px` }
                             : watermarkPosition === 'bottom_right'
-                            ? { bottom: `${Math.round(watermarkMargin * 0.25)}px`, right: `${Math.round(watermarkMargin * 0.25)}px` }
-                            : { top: `${Math.round(watermarkMargin * 0.25)}px`, right: `${Math.round(watermarkMargin * 0.25)}px` }),
+                            ? { bottom: `${Math.round(watermarkMargin * 0.5 + 40)}px`, right: `${Math.round(watermarkMargin * 0.5)}px` }
+                            : { top: `${Math.round(watermarkMargin * 0.5)}px`, right: `${Math.round(watermarkMargin * 0.5)}px` }),
                           opacity: watermarkOpacity / 100,
-                          zIndex: 2,
+                          zIndex: 5,
                           pointerEvents: 'none',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '3px',
-                          backgroundColor: watermarkSource === 'default' ? 'rgba(0,0,0,0.45)' : 'transparent',
-                          padding: watermarkSource === 'default' ? '2px 4px' : '0',
-                          borderRadius: '4px'
+                          gap: '4px',
+                          backgroundColor: watermarkSource === 'default' ? 'rgba(0,0,0,0.55)' : 'transparent',
+                          padding: watermarkSource === 'default' ? '3px 6px' : '0',
+                          borderRadius: '6px'
                         }}
                       >
                         <img
                           src={activeLogoSrc}
                           alt="Watermark"
                           style={{
-                            width: `${Math.max(12, Math.round(watermarkSize * 0.22))}px`,
+                            width: `${Math.max(16, Math.round(watermarkSize * 0.42))}px`,
                             height: 'auto',
-                            maxHeight: `${Math.max(12, Math.round(watermarkSize * 0.22))}px`,
+                            maxHeight: `${Math.max(16, Math.round(watermarkSize * 0.42))}px`,
                             objectFit: 'contain',
-                            borderRadius: watermarkSource === 'default' ? '50%' : '2px'
+                            borderRadius: watermarkSource === 'default' ? '50%' : '3px'
                           }}
                         />
                         {watermarkSource === 'default' && (
-                          <span style={{ fontSize: '7px', color: '#ef4444', fontWeight: 700 }}>MK</span>
+                          <span style={{ fontSize: '9px', color: '#ef4444', fontWeight: 800 }}>MK</span>
                         )}
                       </div>
                     )}
 
+                    {/* Subtitle Text Display */}
                     {subtitleMode === 'none' ? (
                       <div
                         style={{
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          gap: '3px',
-                          padding: '6px 12px',
-                          backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          borderRadius: '6px',
+                          gap: '4px',
+                          padding: '8px 16px',
+                          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid rgba(239, 68, 68, 0.35)',
+                          borderRadius: '8px',
                           color: '#fca5a5',
-                          fontSize: '11px',
+                          fontSize: '12px',
                           textAlign: 'center',
-                          zIndex: 1
+                          zIndex: 3
                         }}
                       >
-                        <span style={{ fontWeight: 600 }}>🚫 Clean Video (No Subtitles Burned)</span>
-                        <span style={{ fontSize: '9px', color: '#f87171' }}>
-                          Khmer AI voiceover + BGM embedded with zero burnt text.
+                        <span style={{ fontWeight: 600 }}>🚫 Clean Video (No Burnt Subtitles)</span>
+                        <span style={{ fontSize: '10px', color: '#f87171' }}>
+                          Khmer AI voiceover + BGM will be rendered with zero burnt subtitle text.
                         </span>
                       </div>
                     ) : (
@@ -1568,34 +3028,109 @@ export default function ExportModal({
                           fontFamily: fontName ? `"${fontName}", var(--font-khmer), sans-serif` : 'var(--font-khmer)',
                           transform: position === 'middle' ? 'translate(-50%, -50%)' : 'translateX(-50%)',
                           ...(position === 'top'
-                            ? { top: `${Math.max(6, Math.min(45, Math.round(verticalOffset * 0.32)))}px` }
+                            ? { top: `${Math.max(10, Math.min(100, Math.round(verticalOffset * 0.7)))}px` }
                             : position === 'middle'
                             ? { top: '50%' }
-                            : { bottom: `${Math.max(6, Math.min(45, Math.round(verticalOffset * 0.32)))}px` }
+                            : { bottom: `${Math.max(activeVideoSrc ? 45 : 15, Math.min(120, Math.round(verticalOffset * 0.7)))}px` }
                           ),
-                          backgroundColor: stylePreset === 'box_dark'
-                            ? 'rgba(0, 0, 0, 0.92)'
-                            : 'rgba(0, 0, 0, 0.72)',
-                          color: stylePreset === 'modern_yellow'
+                          backgroundColor: (stylePreset === 'box_dark' || stylePreset === 'box_yellow')
+                            ? 'rgba(0, 0, 0, 0.90)'
+                            : 'transparent',
+                          color: (stylePreset === 'modern_yellow' || stylePreset === 'box_yellow')
                             ? '#facc15'
                             : '#ffffff',
-                          fontSize: `${Math.max(11, Math.round(fontSize * 0.62))}px`,
+                          fontSize: `${Math.max(13, Math.round(fontSize * 0.95))}px`,
                           fontWeight: 700,
-                          padding: '2px 8px',
-                          borderRadius: '4px',
+                          padding: (stylePreset === 'box_dark' || stylePreset === 'box_yellow') ? '4px 12px' : '2px 6px',
+                          borderRadius: (stylePreset === 'box_dark' || stylePreset === 'box_yellow') ? '6px' : '0',
                           textAlign: 'center',
-                          maxWidth: '88%',
-                          lineHeight: 1.3,
-                          boxShadow: stylePreset === 'box_dark' ? '0 2px 8px rgba(0,0,0,0.8)' : 'none',
-                          textShadow: stylePreset === 'classic_white'
-                            ? '1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000'
-                            : '1px 1px 2px rgba(0,0,0,0.8)',
+                          maxWidth: '85%',
+                          lineHeight: 1.4,
+                          boxShadow: (stylePreset === 'box_dark' || stylePreset === 'box_yellow') ? '0 3px 12px rgba(0,0,0,0.85)' : 'none',
+                          textShadow: (stylePreset === 'box_dark' || stylePreset === 'box_yellow')
+                            ? '1px 1px 2px rgba(0,0,0,0.8)'
+                            : '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 3px 6px rgba(0,0,0,0.95)',
                           pointerEvents: 'none',
                           transition: 'all 0.12s ease-out',
-                          zIndex: 2
+                          zIndex: 5
                         }}
                       >
-                        {sampleSubtitleText}
+                        {currentSubtitleText}
+                      </div>
+                    )}
+
+                    {/* Integrated Playback & Scrubber Controls Bar at bottom of Video Preview */}
+                    {activeVideoSrc && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: '36px',
+                          backgroundColor: 'rgba(10, 13, 20, 0.85)',
+                          backdropFilter: 'blur(8px)',
+                          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '0 10px',
+                          gap: '8px',
+                          zIndex: 7
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={togglePreviewPlay}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#fff',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '4px',
+                            borderRadius: '4px'
+                          }}
+                          title={isPlayingPreview ? 'Pause Preview' : 'Play Preview'}
+                        >
+                          {isPlayingPreview ? <Pause size={14} /> : <Play size={14} />}
+                        </button>
+
+                        <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', minWidth: '70px', fontFamily: 'monospace' }}>
+                          {formatTime(previewCurrentTime)} / {formatTime(previewDuration)}
+                        </span>
+
+                        <input
+                          type="range"
+                          min={0}
+                          max={previewDuration || 100}
+                          step={0.1}
+                          value={previewCurrentTime}
+                          onChange={(e) => handlePreviewSeek(parseFloat(e.target.value))}
+                          style={{
+                            flex: 1,
+                            accentColor: 'var(--accent-primary)',
+                            cursor: 'pointer',
+                            height: '4px'
+                          }}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => setIsPreviewMuted(!isPreviewMuted)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: isPreviewMuted ? 'var(--text-muted)' : '#38bdf8',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '4px'
+                          }}
+                          title={isPreviewMuted ? 'Unmute Preview Audio' : 'Mute Preview Audio'}
+                        >
+                          {isPreviewMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1904,11 +3439,12 @@ export default function ExportModal({
                         <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                           Visual Preset:
                         </label>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
                           {[
                             { id: 'modern_yellow', label: 'Cinematic Yellow' },
                             { id: 'classic_white', label: 'Classic White' },
-                            { id: 'box_dark', label: 'Dark Boxed' }
+                            { id: 'box_dark', label: 'Dark Box White' },
+                            { id: 'box_yellow', label: 'Dark Box Yellow' }
                           ].map((st) => (
                             <button
                               key={st.id}
@@ -2319,12 +3855,12 @@ export default function ExportModal({
                       <input
                         type="checkbox"
                         checked={enableDelogo}
-                        onChange={(e) => setEnableDelogo(e.target.checked)}
+                        onChange={(e) => updateSettings({ enableDelogo: e.target.checked })}
                         style={{ accentColor: '#f59e0b', width: '14px', height: '14px' }}
                       />
                       <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: enableDelogo ? 600 : 400 }}>
                         <EyeOff size={15} style={{ color: '#f59e0b' }} />
-                        Cover / Blur Old Foreign Subtitles (Delogo Strip)
+                        Shape Blur & Logo/Subtitle Censorship (Custom Area)
                       </span>
                     </label>
 
@@ -2337,29 +3873,46 @@ export default function ExportModal({
                           padding: '12px',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '10px'
+                          gap: '12px'
                         }}
                       >
-                        <div style={{ fontSize: '11px', color: '#fcd34d', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '6px 10px', borderRadius: '6px' }}>
-                          ✓ Places a blur or cinema matte bar over hardcoded foreign subtitles before burning your new Khmer text on top.
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: '#fcd34d',
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            border: '1px solid rgba(245, 158, 11, 0.25)',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}
+                        >
+                          <Move size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                          <span>
+                            <strong>Interactive:</strong> Click and drag the box on the video screen above to position it, or pull the corner handle (↘) to resize.
+                          </span>
                         </div>
 
-                        {/* Mode Selector */}
+                        {/* 1. Cover Style Selector */}
                         <div>
                           <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '5px' }}>
-                            COVER STYLE:
+                            BLUR / COVER STYLE:
                           </span>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
                             {[
-                              { id: 'blur', label: '🌫️ Gaussian Blur (12px Box Blur)' },
-                              { id: 'black_bar', label: '⬛ Cinema Matte Bar (85% Black)' }
+                              { id: 'blur', label: '🌫️ Smooth Blur' },
+                              { id: 'pixelate', label: '🔲 Pixelate' },
+                              { id: 'black_bar', label: '⬛ Cinema Bar' },
+                              { id: 'frosted', label: '🧊 Frosted' }
                             ].map((m) => (
                               <button
                                 key={m.id}
                                 type="button"
-                                onClick={() => setDelogoMode(m.id)}
+                                onClick={() => updateSettings({ delogoMode: m.id })}
                                 style={{
-                                  padding: '7px 8px',
+                                  padding: '7px 4px',
                                   borderRadius: '6px',
                                   border: `1px solid ${delogoMode === m.id ? '#f59e0b' : 'var(--border-color)'}`,
                                   backgroundColor: delogoMode === m.id ? 'rgba(245, 158, 11, 0.18)' : 'var(--bg-tertiary)',
@@ -2376,30 +3929,85 @@ export default function ExportModal({
                           </div>
                         </div>
 
-                        {/* Position & Height */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', alignItems: 'center' }}>
+                        {/* 2. Shape Selector & Location Presets */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
+                          {/* Shape: Rectangle or Pill */}
                           <div>
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '5px' }}>
-                              TARGET LOCATION:
+                              SHAPE:
                             </span>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => updateSettings({ delogoShape: 'rectangle' })}
+                                style={{
+                                  padding: '6px 4px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${delogoShape === 'rectangle' ? '#f59e0b' : 'var(--border-color)'}`,
+                                  backgroundColor: delogoShape === 'rectangle' ? 'rgba(245, 158, 11, 0.18)' : 'var(--bg-tertiary)',
+                                  color: delogoShape === 'rectangle' ? '#fff' : 'var(--text-muted)',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <Square size={11} />
+                                <span>Rect</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateSettings({ delogoShape: 'pill' })}
+                                style={{
+                                  padding: '6px 4px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${delogoShape === 'pill' ? '#f59e0b' : 'var(--border-color)'}`,
+                                  backgroundColor: delogoShape === 'pill' ? 'rgba(245, 158, 11, 0.18)' : 'var(--bg-tertiary)',
+                                  color: delogoShape === 'pill' ? '#fff' : 'var(--text-muted)',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <Circle size={11} />
+                                <span>Pill</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Quick Location Presets */}
+                          <div>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '5px' }}>
+                              TARGET LOCATION PRESET:
+                            </span>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
                               {[
-                                { id: 'bottom_subtitles', label: 'Bottom Subs' },
-                                { id: 'top_banner', label: 'Top Banner' }
+                                { id: 'bottom_subtitles', label: 'Bottom' },
+                                { id: 'top_banner', label: 'Top' },
+                                { id: 'top_right', label: 'Top-R' },
+                                { id: 'top_left', label: 'Top-L' }
                               ].map((loc) => (
                                 <button
                                   key={loc.id}
                                   type="button"
-                                  onClick={() => setDelogoArea(loc.id)}
+                                  onClick={() => applyDelogoPreset(loc.id)}
                                   style={{
-                                    padding: '6px 4px',
+                                    padding: '6px 2px',
                                     borderRadius: '6px',
                                     border: `1px solid ${delogoArea === loc.id ? '#f59e0b' : 'var(--border-color)'}`,
                                     backgroundColor: delogoArea === loc.id ? 'rgba(245, 158, 11, 0.18)' : 'var(--bg-tertiary)',
                                     color: delogoArea === loc.id ? '#ffffff' : 'var(--text-muted)',
-                                    fontSize: '11px',
+                                    fontSize: '10px',
                                     fontWeight: 600,
-                                    cursor: 'pointer'
+                                    cursor: 'pointer',
+                                    textAlign: 'center'
                                   }}
                                 >
                                   {loc.label}
@@ -2407,21 +4015,106 @@ export default function ExportModal({
                               ))}
                             </div>
                           </div>
+                        </div>
 
-                          <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>
-                              <span>Strip Height:</span>
-                              <span style={{ color: '#fff', fontWeight: 600 }}>{delogoHeightPct}%</span>
+                        {/* 3. Fine-Tuning Coordinates Sliders */}
+                        <div
+                          style={{
+                            backgroundColor: 'var(--bg-tertiary)',
+                            padding: '10px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border-color)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                              COORDINATES & SIZE (FREEFORM SLIDERS):
+                            </span>
+                            <span style={{ fontSize: '10px', color: '#f59e0b', fontFamily: 'monospace' }}>
+                              X: {delogoXPct}% • Y: {delogoYPct}% • {delogoWPct}% × {delogoHeightPct}%
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                                <span>X (Left):</span>
+                                <span style={{ color: '#fff' }}>{delogoXPct}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max={Math.max(0, 100 - delogoWPct)}
+                                value={delogoXPct}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value);
+                                  setDelogoXPct(val);
+                                  setDelogoArea('custom');
+                                  updateSettings({ delogoXPct: val, delogoArea: 'custom' });
+                                }}
+                                style={{ width: '100%', accentColor: '#f59e0b', cursor: 'pointer' }}
+                              />
                             </div>
-                            <input
-                              type="range"
-                              min="8"
-                              max="28"
-                              step="1"
-                              value={delogoHeightPct}
-                              onChange={(e) => setDelogoHeightPct(parseInt(e.target.value))}
-                              style={{ width: '100%', accentColor: '#f59e0b', cursor: 'pointer' }}
-                            />
+
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                                <span>Y (Top):</span>
+                                <span style={{ color: '#fff' }}>{delogoYPct}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max={Math.max(0, 100 - delogoHeightPct)}
+                                value={delogoYPct}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value);
+                                  setDelogoYPct(val);
+                                  setDelogoArea('custom');
+                                  updateSettings({ delogoYPct: val, delogoArea: 'custom' });
+                                }}
+                                style={{ width: '100%', accentColor: '#f59e0b', cursor: 'pointer' }}
+                              />
+                            </div>
+
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                                <span>Width:</span>
+                                <span style={{ color: '#fff' }}>{delogoWPct}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="5"
+                                max={100 - delogoXPct}
+                                value={delogoWPct}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value);
+                                  setDelogoWPct(val);
+                                  setDelogoArea('custom');
+                                  updateSettings({ delogoWPct: val, delogoArea: 'custom' });
+                                }}
+                                style={{ width: '100%', accentColor: '#f59e0b', cursor: 'pointer' }}
+                              />
+                            </div>
+
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                                <span>Height:</span>
+                                <span style={{ color: '#fff' }}>{delogoHeightPct}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="3"
+                                max={Math.min(60, 100 - delogoYPct)}
+                                value={delogoHeightPct}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value);
+                                  setDelogoHeightPct(val);
+                                  setDelogoArea('custom');
+                                  updateSettings({ delogoHeightPct: val, delogoArea: 'custom' });
+                                }}
+                                style={{ width: '100%', accentColor: '#f59e0b', cursor: 'pointer' }}
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2541,6 +4234,8 @@ export default function ExportModal({
                     onClick={() => {
                       const options = {
                         subtitle_style: stylePreset,
+                        primary_color: (stylePreset === 'modern_yellow' || stylePreset === 'box_yellow') ? '&H0000FFFF' : '&H00FFFFFF',
+                        outline_color: '&H00000000',
                         font_name: fontName,
                         font_size: fontSize,
                         subtitle_position: position,
@@ -2566,6 +4261,11 @@ export default function ExportModal({
                         delogo_mode: delogoMode,
                         delogo_area: delogoArea,
                         delogo_height_pct: (parseFloat(delogoHeightPct) || 14) / 100,
+                        delogo_x_pct: (parseFloat(delogoXPct) || 0) / 100,
+                        delogo_y_pct: (parseFloat(delogoYPct) || 0) / 100,
+                        delogo_w_pct: (parseFloat(delogoWPct) || 100) / 100,
+                        delogo_shape: delogoShape,
+                        video_file_path: (queue && queue[selectedQueueIndex]?.filePath) || (queue && queue[0]?.filePath) || null,
                         enable_anti_copyright: enableAntiCopyright,
                         anti_copyright_flip: antiCopyrightFlip,
                         anti_copyright_zoom: parseFloat(antiCopyrightZoom) || 1.03,
@@ -2574,7 +4274,12 @@ export default function ExportModal({
                         use_amf_gpu: useAmfGpu,
                         combine_into_one: renderScope === 'batch' && batchOutputMode === 'combine',
                         combined_filename: combinedTitle || 'Combined_Full_Movie.mp4',
-                        batch_output_mode: batchOutputMode
+                        batch_output_mode: batchOutputMode,
+                        chunk_groups: batchOutputMode === 'chunk' ? chunkGroups.map((g) => ({
+                          part_index: g.part_index,
+                          custom_filename: g.custom_filename,
+                          item_indices: g.item_indices
+                        })) : null
                       };
                       if (renderScope === 'batch' && onBatchRender) {
                         onBatchRender(options);
@@ -2589,12 +4294,16 @@ export default function ExportModal({
                       background: renderScope === 'batch'
                         ? (batchOutputMode === 'combine'
                             ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
-                            : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)')
+                            : batchOutputMode === 'chunk'
+                              ? 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)'
+                              : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)')
                         : 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
                       boxShadow: renderScope === 'batch'
                         ? (batchOutputMode === 'combine'
                             ? '0 4px 14px rgba(16, 185, 129, 0.4)'
-                            : '0 4px 14px rgba(239, 68, 68, 0.4)')
+                            : batchOutputMode === 'chunk'
+                              ? '0 4px 14px rgba(124, 58, 237, 0.4)'
+                              : '0 4px 14px rgba(239, 68, 68, 0.4)')
                         : '0 4px 14px rgba(245, 158, 11, 0.4)'
                     }}
                   >
@@ -2604,7 +4313,9 @@ export default function ExportModal({
                           ? 'Batch Rendering...'
                           : batchOutputMode === 'combine'
                             ? `Render & Combine into 1 Video (${targetBatchCount} Videos)`
-                            : `Start Batch Render (${targetBatchCount} Videos)`)
+                            : batchOutputMode === 'chunk'
+                              ? `Render & Chunk into ${chunkGroups.length} Parts (${targetBatchCount} Videos)`
+                              : `Start Batch Render (${targetBatchCount} Videos)`)
                       : (isProcessing ? 'Rendering in background...' : downloadResult ? 'Re-render Video (Burn New Style)' : 'Start Rendering (1 Video)')}
                   </button>
                 </div>

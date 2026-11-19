@@ -198,9 +198,19 @@ PlayResY: {play_res_y}
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 """
-    # Khmer fonts installed on Windows + standard fallback
-    default_khmer_fonts = "Kantumruy Pro, Kantumruy, Khmer OS Siemreap, Leelawadee UI, Segoe UI, Arial"
-    chosen_font = font_name if font_name else default_khmer_fonts
+    # Map web/display font names to exact TrueType font family names recognized by Windows DirectWrite/GDI
+    font_map = {
+        "kantumruy pro": "Kantumruy",
+        "kantumruy": "Kantumruy",
+        "khmer os siemreap": "Khmer OS Siemreap",
+        "khmer os battambang": "Khmer OS Battambang",
+        "khmer os muol": "Khmer OS Muol",
+        "khmer os content": "Khmer OS Content",
+        "leelawadee ui": "Leelawadee UI",
+        "segoe ui": "Segoe UI"
+    }
+    raw_font = (font_name or "").strip()
+    chosen_font = font_map.get(raw_font.lower(), raw_font or "Kantumruy")
     
     # Scale default font size and margins proportionally to ASS canvas height (play_res_y)
     is_portrait = play_res_y > play_res_x
@@ -216,14 +226,20 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
         calculated_size = int(raw_font_size * 2.6 * height_scale * portrait_boost)
 
     size_my = calculated_size
-    p_col_my = primary_color or "&H0000FFFF"
-    o_col_my = outline_color or "&H00000000"
+    p_col_my = primary_color if primary_color else "&H0000FFFF"
+    o_col_my = outline_color if outline_color else "&H00000000"
+
     size_bd = calculated_size
-    p_col_bd = primary_color or "&H00FFFFFF"
-    o_col_bd = outline_color or "&H00000000"
+    p_col_bd = primary_color if primary_color else "&H00FFFFFF"
+    o_col_bd = outline_color if outline_color else "&H00000000"
+
+    size_by = calculated_size
+    p_col_by = primary_color if primary_color else "&H0000FFFF"
+    o_col_by = outline_color if outline_color else "&H00000000"
+
     size_cw = calculated_size
-    p_col_cw = primary_color or "&H00FFFFFF"
-    o_col_cw = outline_color or "&H00000000"
+    p_col_cw = primary_color if primary_color else "&H00FFFFFF"
+    o_col_cw = outline_color if outline_color else "&H00000000"
 
     raw_margin = margin_v if (margin_v is not None and margin_v > 0) else (90 if is_portrait else 55)
     actual_margin_v = int(raw_margin * height_scale)
@@ -239,6 +255,8 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
         style_line = f"Style: Default,{chosen_font},{size_my},{p_col_my},&H000000FF,{o_col_my},&H80000000,-1,0,0,0,100,100,0,0,1,{outline_val},{shadow_val},{actual_align},{margin_lr},{margin_lr},{actual_margin_v},1"
     elif style_preset == "box_dark":
         style_line = f"Style: Default,{chosen_font},{size_bd},{p_col_bd},&H000000FF,{o_col_bd},&H90000000,-1,0,0,0,100,100,0,0,3,{max(2, outline_val - 1)},1,{actual_align},{int(margin_lr * 0.75)},{int(margin_lr * 0.75)},{actual_margin_v},1"
+    elif style_preset == "box_yellow":
+        style_line = f"Style: Default,{chosen_font},{size_by},{p_col_by},&H000000FF,{o_col_by},&H90000000,-1,0,0,0,100,100,0,0,3,{max(2, outline_val - 1)},1,{actual_align},{int(margin_lr * 0.75)},{int(margin_lr * 0.75)},{actual_margin_v},1"
     else: # classic_white
         style_line = f"Style: Default,{chosen_font},{size_cw},{p_col_cw},&H000000FF,{o_col_cw},&H60000000,-1,0,0,0,100,100,0,0,1,{outline_val},{shadow_val},{actual_align},{margin_lr},{margin_lr},{actual_margin_v},1"
 

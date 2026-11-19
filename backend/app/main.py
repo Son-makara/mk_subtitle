@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import UPLOADS_DIR, AUDIO_CACHE_DIR, EXPORTS_DIR, FFMPEG_PATH, FFPROBE_PATH, SUBPROCESS_FLAGS
+from .config import STORAGE_DIR, UPLOADS_DIR, AUDIO_CACHE_DIR, EXPORTS_DIR, FFMPEG_PATH, FFPROBE_PATH, SUBPROCESS_FLAGS
 from .models.subtitle import (
     SubtitleItem,
     SubtitleProject,
@@ -25,6 +25,8 @@ from .models.subtitle import (
     STTRequest,
     VocalSeparationRequest,
     VideoConcatRequest,
+    VideoSplitRequest,
+    VideoSplitSegment,
     OpenVlcRequest
 )
 from .services.subtitle_parser import (
@@ -37,15 +39,18 @@ from .services.subtitle_parser import (
 from .services.tts_engine import (
     get_all_voices,
     generate_speech_for_text,
-    generate_batch_tts
+    generate_batch_tts,
+    is_mms_khmer_available
 )
 from .services.translator import (
     translate_batch_gemini,
-    translate_batch_google_free
+    translate_batch_google_free,
+    translate_batch_nllb_offline,
+    is_nllb_available
 )
 from .services.whisper_stt import transcribe_video_whisper
 from .services.vocal_separator import separate_audio_vocals
-from .services.ffmpeg_runner import probe_video, render_and_burn_video, get_render_progress, concat_videos
+from .services.ffmpeg_runner import probe_video, render_and_burn_video, get_render_progress, concat_videos, split_video, resolve_video_file
 
 app = FastAPI(
     title="mk_subtitle API",
@@ -450,6 +455,15 @@ async def separate_vocals_endpoint(req: VocalSeparationRequest):
         print(f"UVR separation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/offline/status")
+async def get_offline_status():
+    return {
+        "status": "ready",
+        "whisper_stt_offline": True,
+        "mms_khmer_tts_offline": is_mms_khmer_available(),
+        "nllb_translation_offline": is_nllb_available()
+    }
+
 # ==================== AI Translation ====================
 
 @app.post("/api/translate")
@@ -462,6 +476,12 @@ async def translate_subtitles(req: TranslationRequest):
                 target_lang=req.target_lang,
                 api_key=req.gemini_api_key
             )
+        elif req.provider in ["nllb", "nllb_offline", "offline"]:
+            translated = await translate_batch_nllb_offline(
+                req.items,
+                source_lang=req.source_lang,
+                target_lang=req.target_lang
+            )
         else:
             translated = await translate_batch_google_free(
                 req.items,
@@ -473,7 +493,7 @@ async def translate_subtitles(req: TranslationRequest):
         print(f"Translation API error: {e}")
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
-# ==================== Text-to-Speech (Edge-TTS) ====================
+# ==================== Text-to-Speech (Edge-TTS & Meta MMS Offline) ====================
 
 @app.get("/api/tts/voices")
 async def list_voices():
@@ -494,7 +514,9 @@ async def tts_single_item(req: TTSGenerateItemRequest):
             pitch=req.pitch,
             volume=req.volume,
             target_duration=req.target_duration,
-            auto_fit=req.auto_fit
+            auto_fit=req.auto_fit,
+            engine=getattr(req, "engine", "edge-tts") or "edge-tts",
+            gender=req.gender or "Female"
         )
         return res
     except Exception as e:
@@ -512,7 +534,8 @@ async def tts_batch(req: TTSBatchRequest):
             rate=req.rate,
             pitch=req.pitch,
             volume=req.volume,
-            auto_fit=req.auto_fit
+            auto_fit=req.auto_fit,
+            engine=getattr(req, "engine", "edge-tts") or "edge-tts"
         )
         return {"items": updated_items}
     except Exception as e:
@@ -621,6 +644,11 @@ async def get_render_progress_endpoint(job_id: str):
 @app.post("/api/render/burn")
 async def burn_video_endpoint(req: VideoBurnRequest, background_tasks: BackgroundTasks):
     try:
+        try:
+            with open(STORAGE_DIR / "last_burn_req.json", "w", encoding="utf-8") as f_req:
+                f_req.write(req.model_dump_json(indent=2))
+        except Exception:
+            pass
         # Extra safety check: if dubbing is requested, make sure all items have valid audio on disk!
         if req.include_dubbing and req.items:
             def audio_file_exists(it):
@@ -640,8 +668,12 @@ async def burn_video_endpoint(req: VideoBurnRequest, background_tasks: Backgroun
                 gen_lookup = {it.id: it for it in generated}
                 req.items = [gen_lookup.get(it.id, it) for it in req.items]
 
-        # Run render non-blockingly in background threadpool to keep server fast and smooth
-        export_filename = await asyncio.to_thread(render_and_burn_video, req)
+        # Dynamically reload services to ensure latest resolver, filter pipelines and GPU flags are active
+        from .services import whisper_stt, ffmpeg_runner
+        import importlib
+        importlib.reload(whisper_stt)
+        importlib.reload(ffmpeg_runner)
+        export_filename = await asyncio.to_thread(ffmpeg_runner.render_and_burn_video, req)
         return {
             "status": "success",
             "export_filename": export_filename,
@@ -672,6 +704,41 @@ async def concat_videos_endpoint(req: VideoConcatRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Video concatenation failed: {str(e)}")
+
+@app.post("/api/render/split")
+async def split_video_endpoint(req: VideoSplitRequest):
+    try:
+        if not req.video_filename:
+            raise HTTPException(status_code=400, detail="No video filename provided.")
+        if not req.segments:
+            raise HTTPException(status_code=400, detail="No segments provided for splitting.")
+        results = await asyncio.to_thread(
+            split_video,
+            req.video_filename,
+            req.segments,
+            req.job_id
+        )
+        return {
+            "status": "success",
+            "results": results
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Video splitting failed: {str(e)}")
+
+@app.get("/api/video/probe")
+async def probe_video_endpoint(filename: str):
+    try:
+        fpath = resolve_video_file(filename)
+        metadata = await asyncio.to_thread(probe_video, fpath)
+        return {
+            "status": "success",
+            "filename": fpath.name,
+            "metadata": metadata
+        }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Video probe failed: {str(e)}")
 
 # Mount frontend build static directory if present
 if getattr(sys, 'frozen', False):

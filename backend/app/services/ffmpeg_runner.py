@@ -2,12 +2,13 @@ import os
 import re
 import json
 import uuid
+import urllib.parse
 import subprocess
 import threading
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-from ..config import UPLOADS_DIR, EXPORTS_DIR, AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH, BASE_DIR, SUBPROCESS_FLAGS
+from ..config import STORAGE_DIR, UPLOADS_DIR, EXPORTS_DIR, AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH, BASE_DIR, SUBPROCESS_FLAGS
 from ..models.subtitle import VideoBurnRequest
 from .subtitle_parser import export_ass
 from .audio_mixer import build_dubbed_audio_track
@@ -110,8 +111,18 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
             "error": None
         }
 
-    video_path = resolve_media_file(req.video_filename)
+    video_path = None
+    if getattr(req, "video_file_path", None):
+        p = Path(req.video_file_path)
+        if p.is_file() and p.exists() and p.suffix.lower() in {".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".m4v", ".ts"}:
+            video_path = p
+
+    if not video_path:
+        video_path = resolve_media_file(req.video_filename, require_video=True)
+
     probe = probe_video(video_path)
+    if not probe.get("width") or probe.get("codec") == "none":
+        raise ValueError(f"Resolved file '{video_path.name}' is not a valid video file or has no video stream.")
 
     # Calculate video duration safely
     max_sub_time = max((it.end_time for it in req.items), default=5.0) if req.items else 5.0
@@ -250,23 +261,60 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
             filter_chains.append(f"{current_v}{','.join(ac_filters)}[vac]")
             current_v = "[vac]"
 
-    # 2. Delogo / Cover old foreign subtitles or logos
+    # 2. Shape Blur & Delogo / Cover old foreign subtitles, watermarks or logos
     if getattr(req, "enable_delogo", False):
         mode = getattr(req, "delogo_mode", "blur") or "blur"
         area = getattr(req, "delogo_area", "bottom_subtitles") or "bottom_subtitles"
-        h_pct = max(0.08, min(getattr(req, "delogo_height_pct", 0.14) or 0.14, 0.35))
+
+        raw_h = getattr(req, "delogo_height_pct", 0.14) or 0.14
+        h_pct = max(0.03, min(float(raw_h), 1.0))
+
         if area == "bottom_subtitles":
-            if mode == "black_bar":
-                filter_chains.append(f"{current_v}drawbox=x=0:y=ih*{1.0 - h_pct:.3f}:w=iw:h=ih*{h_pct:.3f}:color=black@0.85:t=fill[vdelogo]")
-            else:
-                filter_chains.append(f"{current_v}split[vbase][vcrop];[vcrop]crop=iw:ih*{h_pct:.3f}:0:ih*{1.0 - h_pct:.3f},boxblur=12:6[vblur];[vbase][vblur]overlay=0:H*{1.0 - h_pct:.3f}[vdelogo]")
-            current_v = "[vdelogo]"
+            h_pct = max(0.06, min(h_pct, 0.40))
+            x_pct = 0.0
+            y_pct = 1.0 - h_pct
+            w_pct = 1.0
+        elif area == "top_banner":
+            h_pct = max(0.06, min(h_pct, 0.40))
+            x_pct = 0.0
+            y_pct = 0.0
+            w_pct = 1.0
         elif area == "top_right":
-            filter_chains.append(f"{current_v}split[vbase][vcrop];[vcrop]crop=iw*0.22:ih*0.12:iw*0.78:0,boxblur=10:5[vblur];[vbase][vblur]overlay=W*0.78:0[vdelogo]")
-            current_v = "[vdelogo]"
+            x_pct = 0.76
+            y_pct = 0.0
+            w_pct = 0.24
+            h_pct = 0.13
         elif area == "top_left":
-            filter_chains.append(f"{current_v}split[vbase][vcrop];[vcrop]crop=iw*0.22:ih*0.12:0:0,boxblur=10:5[vblur];[vbase][vblur]overlay=0:0[vdelogo]")
-            current_v = "[vdelogo]"
+            x_pct = 0.0
+            y_pct = 0.0
+            w_pct = 0.24
+            h_pct = 0.13
+        else:  # "custom" or freeform draggable shape blur
+            x_pct = max(0.0, min(float(getattr(req, "delogo_x_pct", 0.0) or 0.0), 0.96))
+            y_pct = max(0.0, min(float(getattr(req, "delogo_y_pct", 0.86) or 0.86), 0.96))
+            w_pct = max(0.04, min(float(getattr(req, "delogo_w_pct", 1.0) or 1.0), 1.0))
+            h_pct = max(0.03, min(float(raw_h), 1.0))
+            if x_pct + w_pct > 1.0:
+                w_pct = max(0.04, 1.0 - x_pct)
+            if y_pct + h_pct > 1.0:
+                h_pct = max(0.03, 1.0 - y_pct)
+
+        crop_x = f"trunc(iw*{x_pct:.4f}/2)*2"
+        crop_y = f"trunc(ih*{y_pct:.4f}/2)*2"
+        crop_w = f"trunc(min(iw-x\\,iw*{w_pct:.4f})/2)*2"
+        crop_h = f"trunc(min(ih-y\\,ih*{h_pct:.4f})/2)*2"
+        over_x = f"W*{x_pct:.4f}"
+        over_y = f"H*{y_pct:.4f}"
+
+        if mode == "black_bar":
+            filter_chains.append(f"{current_v}drawbox=x=iw*{x_pct:.4f}:y=ih*{y_pct:.4f}:w=iw*{w_pct:.4f}:h=ih*{h_pct:.4f}:color=black@0.88:t=fill[vdelogo]")
+        elif mode == "pixelate":
+            filter_chains.append(f"{current_v}split[vbase][vcrop];[vcrop]crop=x={crop_x}:y={crop_y}:w={crop_w}:h={crop_h},scale=max(4\\,trunc(iw/8/2)*2):max(4\\,trunc(ih/8/2)*2):flags=neighbor,scale=iw*8:ih*8:flags=neighbor[vpix];[vbase][vpix]overlay={over_x}:{over_y}[vdelogo]")
+        elif mode == "frosted":
+            filter_chains.append(f"{current_v}split[vbase][vcrop];[vcrop]crop=x={crop_x}:y={crop_y}:w={crop_w}:h={crop_h},avgblur=sizeX=12:sizeY=12,drawbox=x=0:y=0:w=iw:h=ih:color=black@0.45:t=fill[vfrost];[vbase][vfrost]overlay={over_x}:{over_y}[vdelogo]")
+        else:  # "blur" (Gaussian/Box blur)
+            filter_chains.append(f"{current_v}split[vbase][vcrop];[vcrop]crop=x={crop_x}:y={crop_y}:w={crop_w}:h={crop_h},avgblur=sizeX=14:sizeY=14[vblur];[vbase][vblur]overlay={over_x}:{over_y}[vdelogo]")
+        current_v = "[vdelogo]"
 
     # 3. Subtitles Burn
     if has_subtitles and temp_ass_path.exists():
@@ -343,7 +391,7 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
     if getattr(req, "enable_anti_copyright", False):
         spd = max(0.95, min(getattr(req, "anti_copyright_speed", 1.03) or 1.03, 1.25))
         if abs(spd - 1.0) > 0.005:
-            if has_orig_audio:
+            if has_orig_audio and keep_original_audio:
                 filter_chains.append(f"[{video_in}:a]atempo={spd:.3f}[orig_spd]")
                 orig_a_in = "[orig_spd]"
             if dubbed_in is not None:
@@ -356,8 +404,9 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
                 filter_chains.append(
                     f"{orig_a_in}volume=1.0[orig_bg];"
                     f"[orig_bg][bgmv]amix=inputs=2:normalize=0[bg_all];"
-                    f"[bg_all]{dubbed_a_in}sidechaincompress=threshold=0.03:ratio={duck_ratio}:attack={attack_ms}:release={release_ms}[ducked_bg];"
-                    f"[ducked_bg]{dubbed_a_in}amix=inputs=2:duration=first:normalize=0[aout]"
+                    f"{dubbed_a_in}asplit=2[dub_sc][dub_mix];"
+                    f"[bg_all][dub_sc]sidechaincompress=threshold=0.03:ratio={duck_ratio}:attack={attack_ms}:release={release_ms}[ducked_bg];"
+                    f"[ducked_bg][dub_mix]amix=inputs=2:duration=first:normalize=0[aout]"
                 )
             else:
                 filter_chains.append(
@@ -367,12 +416,13 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
         else:
             if use_smart_ducking:
                 filter_chains.append(
-                    f"[bgmv]{dubbed_a_in}sidechaincompress=threshold=0.03:ratio={duck_ratio}:attack={attack_ms}:release={release_ms}[ducked_bg];"
-                    f"[ducked_bg]{dubbed_a_in}amix=inputs=2:duration=first:normalize=0[aout]"
+                    f"{dubbed_a_in}asplit=2[dub_sc][dub_mix];"
+                    f"[bgmv][dub_sc]sidechaincompress=threshold=0.03:ratio={duck_ratio}:attack={attack_ms}:release={release_ms}[ducked_bg];"
+                    f"[ducked_bg][dub_mix]amix=inputs=2:duration=first:normalize=0[aout]"
                 )
             else:
                 filter_chains.append(
-                    f"[{dubbed_in}:a][bgmv]amix=inputs=2:duration=first[aout]"
+                    f"{dubbed_a_in}[bgmv]amix=inputs=2:duration=first[aout]"
                 )
         audio_mapping = "[aout]"
 
@@ -380,8 +430,9 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
         if keep_original_audio:
             if use_smart_ducking:
                 filter_chains.append(
-                    f"{orig_a_in}{dubbed_a_in}sidechaincompress=threshold=0.03:ratio={duck_ratio}:attack={attack_ms}:release={release_ms}[ducked_orig];"
-                    f"[ducked_orig]{dubbed_a_in}amix=inputs=2:duration=first:normalize=0[aout]"
+                    f"{dubbed_a_in}asplit=2[dub_sc][dub_mix];"
+                    f"{orig_a_in}[dub_sc]sidechaincompress=threshold=0.03:ratio={duck_ratio}:attack={attack_ms}:release={release_ms}[ducked_orig];"
+                    f"[ducked_orig][dub_mix]amix=inputs=2:duration=first:normalize=0[aout]"
                 )
             else:
                 filter_chains.append(
@@ -497,7 +548,14 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
 
         proc.wait()
         t_err.join(timeout=3.0)
-        return proc.returncode, "".join(stderr_buffer)
+        full_err = "".join(stderr_buffer)
+        if proc.returncode != 0:
+            try:
+                with open(STORAGE_DIR / "last_render_error.log", "w", encoding="utf-8") as f_err:
+                    f_err.write(f"RC: {proc.returncode}\nCOMMAND: {' '.join(full_command)}\n\nSTDERR:\n{full_err}\n")
+            except Exception:
+                pass
+        return proc.returncode, full_err
 
     # Run FFmpeg render
     try:
@@ -537,6 +595,26 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
 
     return export_filename
 
+def resolve_video_file(fn: str) -> Path:
+    """Resolves a video filename or path from uploads, exports, or local disk"""
+    raw_path = Path(str(fn).split("?")[0])
+    if raw_path.is_file() and raw_path.exists():
+        return raw_path
+
+    clean = Path(str(fn).replace("/api/exports/", "").replace("/api/video/", "").split("?")[0]).name
+    for d in [EXPORTS_DIR, UPLOADS_DIR]:
+        p = d / clean
+        if p.exists() and p.is_file():
+            return p
+
+    stem = Path(clean).stem.lower()
+    for d in [EXPORTS_DIR, UPLOADS_DIR]:
+        for f in d.glob("*"):
+            if f.is_file() and not f.name.startswith(".gitkeep") and f.stem.lower() == stem:
+                return f
+    raise FileNotFoundError(f"Video file '{fn}' not found in exports, uploads, or local disk.")
+
+
 def concat_videos(
     video_filenames: List[str],
     custom_output_filename: Optional[str] = None,
@@ -557,34 +635,7 @@ def concat_videos(
             "message": f"Preparing to combine {len(video_filenames)} videos..."
         }
 
-    resolved_paths: List[Path] = []
-    for fn in video_filenames:
-        found = None
-        # 1. Direct path check (local disk or network share)
-        raw_path = Path(str(fn).split("?")[0])
-        if raw_path.is_file() and raw_path.exists():
-            found = raw_path
-
-        if not found:
-            clean = Path(str(fn).replace("/api/exports/", "").replace("/api/video/", "").split("?")[0]).name
-            for d in [EXPORTS_DIR, UPLOADS_DIR]:
-                p = d / clean
-                if p.exists() and p.is_file():
-                    found = p
-                    break
-            if not found:
-                # Try stem matching
-                stem = Path(clean).stem.lower()
-                for d in [EXPORTS_DIR, UPLOADS_DIR]:
-                    for f in d.glob("*"):
-                        if f.is_file() and not f.name.startswith(".gitkeep") and f.stem.lower() == stem:
-                            found = f
-                            break
-                    if found:
-                        break
-        if not found:
-            raise FileNotFoundError(f"Video file '{fn}' not found in exports, uploads, or local disk.")
-        resolved_paths.append(found)
+    resolved_paths: List[Path] = [resolve_video_file(fn) for fn in video_filenames]
 
     # Determine output filename
     if custom_output_filename:
@@ -702,3 +753,148 @@ def concat_videos(
                 os.remove(temp_list_path)
             except Exception:
                 pass
+
+
+def parse_time_seconds(val: Any) -> Optional[float]:
+    """Parses various time representations (seconds float, 'HH:MM:SS', 'MM:SS') into seconds"""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    parts = s.split(":")
+    try:
+        if len(parts) == 3:
+            return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+        elif len(parts) == 2:
+            return float(parts[0]) * 60 + float(parts[1])
+        elif len(parts) == 1:
+            return float(parts[0])
+    except Exception:
+        return None
+    return None
+
+def split_video(
+    video_filename: str,
+    segments: List[Any],
+    job_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Splits a video file into multiple segment parts based on custom start and end timestamps.
+    Uses ultra-fast stream copy (-c copy) with automatic fallback to high-quality re-encoding.
+    """
+    if not segments:
+        raise ValueError("No split segments provided.")
+
+    src_path = resolve_video_file(video_filename)
+    if job_id:
+        RENDER_PROGRESS[job_id] = {
+            "progress": 5,
+            "status": "rendering",
+            "message": f"Preparing to split video into {len(segments)} segments..."
+        }
+
+    results = []
+    total = len(segments)
+    src_stem = sanitize_filename(src_path.stem)
+
+    for idx, seg in enumerate(segments):
+        if hasattr(seg, "dict"):
+            s_dict = seg.dict()
+        elif isinstance(seg, dict):
+            s_dict = seg
+        else:
+            s_dict = {
+                "start_time": getattr(seg, "start_time", "00:00:00"),
+                "end_time": getattr(seg, "end_time", ""),
+                "output_filename": getattr(seg, "output_filename", None)
+            }
+
+        start_t = str(s_dict.get("start_time") or "00:00:00").strip()
+        end_t = str(s_dict.get("end_time") or "").strip()
+        out_name = s_dict.get("output_filename")
+
+        if not out_name:
+            out_name = f"{src_stem}_Part_{idx + 1}.mp4"
+        out_name = sanitize_filename(Path(out_name).name)
+        if not out_name.lower().endswith(".mp4"):
+            out_name = f"{out_name}.mp4"
+
+        export_path = EXPORTS_DIR / out_name
+        try:
+            if export_path.exists():
+                export_path.unlink(missing_ok=True)
+        except Exception:
+            out_name = f"{Path(out_name).stem}_{uuid.uuid4().hex[:4]}.mp4"
+            export_path = EXPORTS_DIR / out_name
+
+        if job_id:
+            pct = int(10 + (idx / total) * 85)
+            RENDER_PROGRESS[job_id]["progress"] = pct
+            RENDER_PROGRESS[job_id]["message"] = f"Exporting Part {idx + 1}/{total}: {out_name}..."
+
+        # Calculate time arguments safely avoiding FFmpeg '-to smaller than -ss' errors
+        start_sec = parse_time_seconds(start_t) or 0.0
+        end_sec = parse_time_seconds(end_t)
+
+        time_args = ["-ss", f"{start_sec:.3f}"]
+        if end_sec is not None:
+            if end_sec > start_sec:
+                dur = end_sec - start_sec
+                time_args.extend(["-t", f"{dur:.3f}"])
+            elif end_sec > 0:
+                # Segment was provided with duration rather than absolute timestamp
+                time_args.extend(["-t", f"{end_sec:.3f}"])
+
+        # 1. Attempt ultra-fast stream copy:
+        cmd = [
+            FFMPEG_PATH, "-y",
+            *time_args,
+            "-i", str(src_path),
+            "-map", "0",
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            str(export_path)
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+        success = proc.returncode == 0 and export_path.exists() and export_path.stat().st_size > 1000
+
+        # Fallback to fast re-encoding if stream copy fails
+        if not success:
+            cmd_re = [
+                FFMPEG_PATH, "-y",
+                *time_args,
+                "-i", str(src_path),
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "22",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-avoid_negative_ts", "make_zero",
+                str(export_path)
+            ]
+            proc2 = subprocess.run(cmd_re, capture_output=True, text=True, creationflags=SUBPROCESS_FLAGS)
+            if proc2.returncode != 0 or not export_path.exists() or export_path.stat().st_size < 1000:
+                raise RuntimeError(f"Failed to split segment {idx + 1} ({out_name}): {proc2.stderr[-400:]}")
+
+        size_mb = round(export_path.stat().st_size / (1024 * 1024), 2)
+        results.append({
+            "filename": out_name,
+            "export_filename": out_name,
+            "download_url": f"/api/exports/{urllib.parse.quote(out_name)}",
+            "start_time": start_t,
+            "end_time": end_t,
+            "size_mb": size_mb,
+            "part_index": idx + 1
+        })
+
+    if job_id:
+        RENDER_PROGRESS[job_id]["progress"] = 100
+        RENDER_PROGRESS[job_id]["status"] = "completed"
+        RENDER_PROGRESS[job_id]["message"] = f"Successfully created {len(results)} split videos!"
+
+    return results

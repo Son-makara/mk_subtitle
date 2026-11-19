@@ -25,7 +25,13 @@ import {
   FolderCheck,
   RefreshCw,
   Sliders,
-  Layers
+  Layers,
+  Scissors,
+  Settings,
+  HelpCircle,
+  ChevronRight,
+  Check,
+  EyeOff
 } from 'lucide-react';
 
 import SubtitleDataTable from './components/SubtitleDataTable';
@@ -104,6 +110,41 @@ export default function App() {
   const [isLaunchingVlc, setIsLaunchingVlc] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const speedOsdTimer = useRef(null);
+
+  // Resizable Video Column State
+  const [videoColWidth, setVideoColWidth] = useState(() => {
+    const saved = localStorage.getItem('mk_video_col_width');
+    return saved ? parseInt(saved, 10) : 380;
+  });
+  const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(380);
+
+  const handleDividerMouseDown = (e) => {
+    e.preventDefault();
+    setIsDraggingDivider(true);
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = videoColWidth;
+  };
+
+  useEffect(() => {
+    if (!isDraggingDivider) return;
+    const handleMouseMove = (e) => {
+      const delta = e.clientX - dragStartX.current;
+      const newWidth = Math.max(280, Math.min(650, dragStartWidth.current + delta));
+      setVideoColWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      setIsDraggingDivider(false);
+      localStorage.setItem('mk_video_col_width', String(videoColWidth));
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingDivider, videoColWidth]);
 
   useEffect(() => {
     const handleFsChange = () => {
@@ -273,10 +314,15 @@ export default function App() {
 
   // Online / Offline detection
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [ttsEngine, setTtsEngine] = useState('edge-tts'); // 'edge-tts' or 'mms-offline'
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setIsOnline(true);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
@@ -302,7 +348,25 @@ export default function App() {
       fontSize: 24,
       position: 'bottom',
       verticalOffset: 55,
-      stylePreset: 'modern_yellow'
+      stylePreset: 'modern_yellow',
+      enableDelogo: false,
+      delogoMode: 'blur',
+      delogoArea: 'bottom_subtitles',
+      delogoHeightPct: 14,
+      delogoXPct: 0,
+      delogoYPct: 86,
+      delogoWPct: 100,
+      delogoShape: 'rectangle',
+      enableAntiCopyright: false,
+      antiCopyrightFlip: true,
+      antiCopyrightZoom: 1.03,
+      antiCopyrightColor: true,
+      antiCopyrightSpeed: 1.03,
+      addLogoWatermark: false,
+      watermarkPosition: 'top_right',
+      watermarkSize: 90,
+      watermarkOpacity: 85,
+      watermarkMargin: 20
     };
     try {
       const saved = localStorage.getItem('mk_sub_settings');
@@ -853,17 +917,56 @@ export default function App() {
       use_translation: isCustomObject?.use_translation !== undefined ? isCustomObject.use_translation : (subSettings.subtitleMode === 'khmer'),
       include_dubbing: isCustomObject?.include_dubbing !== undefined ? isCustomObject.include_dubbing : true,
       mute_original_audio: isCustomObject?.mute_original_audio !== undefined ? isCustomObject.mute_original_audio : true,
-      add_logo_watermark: Boolean(isCustomObject?.add_logo_watermark),
+      add_logo_watermark: isCustomObject?.add_logo_watermark !== undefined ? Boolean(isCustomObject.add_logo_watermark) : Boolean(subSettings.addLogoWatermark),
       watermark_custom_path: isCustomObject?.watermark_custom_path || null,
-      watermark_position: isCustomObject?.watermark_position || 'top_right',
-      watermark_size: isCustomObject?.watermark_size || 90,
-      watermark_opacity: isCustomObject?.watermark_opacity !== undefined ? isCustomObject.watermark_opacity : 0.85,
-      watermark_margin: isCustomObject?.watermark_margin !== undefined ? isCustomObject.watermark_margin : 20,
+      watermark_position: isCustomObject?.watermark_position || subSettings.watermarkPosition || 'top_right',
+      watermark_size: isCustomObject?.watermark_size || subSettings.watermarkSize || 90,
+      watermark_opacity: isCustomObject?.watermark_opacity !== undefined ? isCustomObject.watermark_opacity : ((subSettings.watermarkOpacity || 85) / 100),
+      watermark_margin: isCustomObject?.watermark_margin !== undefined ? isCustomObject.watermark_margin : (subSettings.watermarkMargin || 20),
       background_ducking_volume: isCustomObject?.background_ducking_volume !== undefined ? isCustomObject.background_ducking_volume : 0.25,
       use_amf_gpu: isCustomObject?.use_amf_gpu !== undefined ? isCustomObject.use_amf_gpu : true,
       combine_into_one: Boolean(isCustomObject?.combine_into_one),
       combined_filename: isCustomObject?.combined_filename || null,
-      batch_output_mode: isCustomObject?.batch_output_mode || 'separate'
+      batch_output_mode: isCustomObject?.batch_output_mode || 'separate',
+      chunk_groups: isCustomObject?.chunk_groups || null,
+      // Shape Blur & Censorship options
+      enable_delogo: isCustomObject?.enable_delogo !== undefined
+        ? Boolean(isCustomObject.enable_delogo)
+        : Boolean(subSettings.enableDelogo),
+      delogo_mode: isCustomObject?.delogo_mode || subSettings.delogoMode || 'blur',
+      delogo_area: isCustomObject?.delogo_area || subSettings.delogoArea || 'bottom_subtitles',
+      delogo_height_pct: isCustomObject?.delogo_height_pct !== undefined
+        ? parseFloat(isCustomObject.delogo_height_pct)
+        : (parseFloat(subSettings.delogoHeightPct) || 14) / 100,
+      delogo_x_pct: isCustomObject?.delogo_x_pct !== undefined
+        ? parseFloat(isCustomObject.delogo_x_pct)
+        : (parseFloat(subSettings.delogoXPct) || 0) / 100,
+      delogo_y_pct: isCustomObject?.delogo_y_pct !== undefined
+        ? parseFloat(isCustomObject.delogo_y_pct)
+        : (parseFloat(subSettings.delogoYPct) || 86) / 100,
+      delogo_w_pct: isCustomObject?.delogo_w_pct !== undefined
+        ? parseFloat(isCustomObject.delogo_w_pct)
+        : (parseFloat(subSettings.delogoWPct) || 100) / 100,
+      delogo_shape: isCustomObject?.delogo_shape || subSettings.delogoShape || 'rectangle',
+      // Anti-Copyright options
+      enable_anti_copyright: isCustomObject?.enable_anti_copyright !== undefined
+        ? Boolean(isCustomObject.enable_anti_copyright)
+        : Boolean(subSettings.enableAntiCopyright),
+      anti_copyright_flip: isCustomObject?.anti_copyright_flip !== undefined
+        ? Boolean(isCustomObject.anti_copyright_flip)
+        : (subSettings.antiCopyrightFlip !== undefined ? subSettings.antiCopyrightFlip : true),
+      anti_copyright_zoom: isCustomObject?.anti_copyright_zoom !== undefined
+        ? parseFloat(isCustomObject.anti_copyright_zoom)
+        : (parseFloat(subSettings.antiCopyrightZoom) || 1.03),
+      anti_copyright_color: isCustomObject?.anti_copyright_color !== undefined
+        ? Boolean(isCustomObject.anti_copyright_color)
+        : (subSettings.antiCopyrightColor !== undefined ? subSettings.antiCopyrightColor : true),
+      anti_copyright_speed: isCustomObject?.anti_copyright_speed !== undefined
+        ? parseFloat(isCustomObject.anti_copyright_speed)
+        : (parseFloat(subSettings.antiCopyrightSpeed) || 1.03),
+      // Subtitle Colors
+      primary_color: isCustomObject?.primary_color || ((subSettings.stylePreset === 'modern_yellow' || subSettings.stylePreset === 'box_yellow') ? '&H0000FFFF' : '&H00FFFFFF'),
+      outline_color: isCustomObject?.outline_color || '&H00000000'
     };
 
     if (renderOpts.add_logo_watermark && isCustomObject?.watermark_custom_file && !renderOpts.watermark_custom_path) {
@@ -999,6 +1102,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             video_filename: currentItem.serverFilename || currentItem.name,
+            video_file_path: currentItem.filePath || null,
             custom_output_filename: currentItem.name,
             job_id: jobId,
             items: items,
@@ -1075,79 +1179,139 @@ export default function App() {
       }
     }
 
-    // Step F: Combine rendered videos into 1 video if requested
-    if (!batchCancelRef.current && renderOpts.combine_into_one && renderedOutputFilenames.length > 0) {
-      setStatusMessage(`⚡ Combining ${renderedOutputFilenames.length} episodes into 1 video...`);
-      setRenderToast({
-        type: 'info',
-        message: `⚡ Combining ${renderedOutputFilenames.length} episodes into 1 master movie...`
-      });
-
-      const concatJobId = `job_concat_${Date.now()}`;
-      try {
-        let defaultCombinedName = renderOpts.combined_filename;
-        if (!defaultCombinedName || defaultCombinedName === 'Combined_Full_Movie.mp4') {
-          const firstFolder = itemsToProcess[0]?.folderName;
-          const firstStem = (itemsToProcess[0]?.name || 'series')
-            .replace(/\.[^/.]+$/, '')
-            .replace(/^mk_sub_/, '')
-            .replace(/_dubbed$/, '')
-            .replace(/S\d+E\d+/i, '')
-            .replace(/第?\d+集/g, '')
-            .replace(/[-_ ]+$/, '')
-            .trim();
-          const baseName = firstFolder || firstStem || 'Series';
-          defaultCombinedName = `${baseName}_Full_Movie.mp4`;
-        }
-
-        const concatRes = await fetch('/api/render/concat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            video_filenames: renderedOutputFilenames,
-            custom_output_filename: defaultCombinedName,
-            job_id: concatJobId
-          })
+    // Step F: Combine rendered videos into 1 video or multiple chunk parts if requested
+    if (!batchCancelRef.current && (renderOpts.combine_into_one || renderOpts.batch_output_mode === 'chunk') && renderedOutputFilenames.length > 0) {
+      if (renderOpts.batch_output_mode === 'chunk' && renderOpts.chunk_groups && renderOpts.chunk_groups.length > 0) {
+        setStatusMessage(`⚡ Combining ${renderedOutputFilenames.length} episodes into ${renderOpts.chunk_groups.length} chunk parts...`);
+        setRenderToast({
+          type: 'info',
+          message: `⚡ Combining episodes into ${renderOpts.chunk_groups.length} chunk parts...`
         });
 
-        if (!concatRes.ok) {
-          const errData = await concatRes.json().catch(() => ({}));
-          throw new Error(extractErrorMessage(errData, `Concat error (${concatRes.status})`));
-        }
+        const completedParts = [];
+        for (let g = 0; g < renderOpts.chunk_groups.length; g++) {
+          const group = renderOpts.chunk_groups[g];
+          const groupFilenames = (group.item_indices || []).map((idx) => renderedOutputFilenames[idx]).filter(Boolean);
+          if (groupFilenames.length === 0) continue;
 
-        const concatData = await concatRes.json();
-        const masterFilename = concatData.export_filename;
-
-        // If directory picker was selected, save master combined video directly
-        if (dirHandle) {
+          const partJobId = `job_chunk_${g}_${Date.now()}`;
+          const partOutName = group.custom_filename || `Series_Part_${g + 1}.mp4`;
           try {
-            const masterFileHandle = await dirHandle.getFileHandle(masterFilename, { create: true });
-            const blobRes = await fetch(concatData.download_url);
-            const blob = await blobRes.blob();
-            const writable = await masterFileHandle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-          } catch (writeErr) {
-            console.warn(`Could not save ${masterFilename} directly to folder:`, writeErr);
+            const concatRes = await fetch('/api/render/concat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                video_filenames: groupFilenames,
+                custom_output_filename: partOutName,
+                job_id: partJobId
+              })
+            });
+            if (concatRes.ok) {
+              const concatData = await concatRes.json();
+              completedParts.push(concatData);
+              if (dirHandle) {
+                try {
+                  const partFileHandle = await dirHandle.getFileHandle(concatData.export_filename, { create: true });
+                  const blobRes = await fetch(concatData.download_url);
+                  const blob = await blobRes.blob();
+                  const writable = await partFileHandle.createWritable();
+                  await writable.write(blob);
+                  await writable.close();
+                } catch (writeErr) {
+                  console.warn(`Could not save ${concatData.export_filename} to folder:`, writeErr);
+                }
+              }
+            }
+          } catch (partErr) {
+            console.error(`Chunk part ${g + 1} merge failed:`, partErr);
           }
         }
 
-        setBurnResult(concatData);
-        setLastRenderedVideo(concatData);
-        setExportType('burn');
-        setExportModalOpen(true);
-        setStatusMessage(`🎉 Combined ${renderedOutputFilenames.length} episodes into 1 video: ${masterFilename}!`);
+        if (completedParts.length > 0) {
+          setBurnResult(completedParts[0]);
+          setLastRenderedVideo(completedParts[0]);
+          setExportType('burn');
+          setExportModalOpen(true);
+          setStatusMessage(`🎉 Created ${completedParts.length} chunk parts from ${renderedOutputFilenames.length} episodes!`);
+          setRenderToast({
+            type: 'success',
+            message: `🎉 Created ${completedParts.length} Chunk Parts Successfully!`,
+            data: { isBatch: true, chunks: true }
+          });
+        }
+      } else {
+        setStatusMessage(`⚡ Combining ${renderedOutputFilenames.length} episodes into 1 video...`);
         setRenderToast({
-          type: 'success',
-          message: `🎉 Combined into 1 Video: ${masterFilename}!`,
-          data: { isBatch: true, combined: true }
+          type: 'info',
+          message: `⚡ Combining ${renderedOutputFilenames.length} episodes into 1 master movie...`
         });
-      } catch (concatErr) {
-        console.error('Video combination failed:', concatErr);
-        setRenderToast({
-          type: 'error',
-          message: `Videos rendered, but combination failed: ${concatErr.message}`
-        });
+
+        const concatJobId = `job_concat_${Date.now()}`;
+        try {
+          let defaultCombinedName = renderOpts.combined_filename;
+          if (!defaultCombinedName || defaultCombinedName === 'Combined_Full_Movie.mp4') {
+            const firstFolder = itemsToProcess[0]?.folderName;
+            const firstStem = (itemsToProcess[0]?.name || 'series')
+              .replace(/\.[^/.]+$/, '')
+              .replace(/^mk_sub_/, '')
+              .replace(/_dubbed$/, '')
+              .replace(/S\d+E\d+/i, '')
+              .replace(/第?\d+集/g, '')
+              .replace(/[-_ ]+$/, '')
+              .trim();
+            const baseName = firstFolder || firstStem || 'Series';
+            defaultCombinedName = `${baseName}_Full_Movie.mp4`;
+          }
+
+          const concatRes = await fetch('/api/render/concat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              video_filenames: renderedOutputFilenames,
+              custom_output_filename: defaultCombinedName,
+              job_id: concatJobId
+            })
+          });
+
+          if (!concatRes.ok) {
+            const errData = await concatRes.json().catch(() => ({}));
+            throw new Error(extractErrorMessage(errData, `Concat error (${concatRes.status})`));
+          }
+
+          const concatData = await concatRes.json();
+          const masterFilename = concatData.export_filename;
+
+          // If directory picker was selected, save master combined video directly
+          if (dirHandle) {
+            try {
+              const masterFileHandle = await dirHandle.getFileHandle(masterFilename, { create: true });
+              const blobRes = await fetch(concatData.download_url);
+              const blob = await blobRes.blob();
+              const writable = await masterFileHandle.createWritable();
+              await writable.write(blob);
+              await writable.close();
+            } catch (writeErr) {
+              console.warn(`Could not save ${masterFilename} directly to folder:`, writeErr);
+            }
+          }
+
+          setBurnResult(concatData);
+          setLastRenderedVideo(concatData);
+          setExportType('burn');
+          setExportModalOpen(true);
+          setStatusMessage(`🎉 Combined ${renderedOutputFilenames.length} episodes into 1 video: ${masterFilename}!`);
+          setRenderToast({
+            type: 'success',
+            message: `🎉 Combined into 1 Video: ${masterFilename}!`,
+            data: { isBatch: true, combined: true }
+          });
+        } catch (concatErr) {
+          console.error('Video combination failed:', concatErr);
+          setRenderToast({
+            type: 'error',
+            message: `Videos rendered, but combination failed: ${concatErr.message}`
+          });
+        }
       }
     } else {
       setStatusMessage(`🎉 Batch Render finished: ${successfullyRendered} videos rendered successfully!`);
@@ -1292,19 +1456,57 @@ export default function App() {
 
   const handleUpdateSubtitle = (id, fields) => {
     setSubtitles((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...fields } : item))
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item, ...fields };
+        // If gender changed, invalidate old opposite-gender audio
+        if (fields.gender && fields.gender !== item.gender) {
+          updated.audio_url = null;
+          updated.audio_status = 'idle';
+          if (audioSyncCache.current[id]) {
+            try { audioSyncCache.current[id].pause(); } catch (_) {}
+            delete audioSyncCache.current[id];
+          }
+          if (playingAudioId === id && currentAudioRef.current) {
+            try { currentAudioRef.current.pause(); } catch (_) {}
+            currentAudioRef.current = null;
+            setPlayingAudioId(null);
+          }
+        }
+        return updated;
+      })
     );
   };
 
   const handleSetAllVoices = (gender) => {
-    setSubtitles((prev) => prev.map((s) => ({ ...s, gender })));
+    // Invalidate stale audio when gender changes so new matching voice is generated
+    setSubtitles((prev) =>
+      prev.map((s) => ({
+        ...s,
+        gender,
+        audio_url: null,
+        audio_status: 'idle'
+      }))
+    );
+    // Clear audio preview cache
+    audioSyncCache.current = {};
+    if (currentAudioRef.current) {
+      try { currentAudioRef.current.pause(); } catch (_) {}
+      currentAudioRef.current = null;
+    }
+    setPlayingAudioId(null);
   };
 
-  // Generate audio for selected items (using Edge-TTS)
-  const handleGenerateSelectedAudio = async (mode = null) => {
+  // Generate audio for selected items (using Edge-TTS Online or Meta MMS Offline)
+  const handleGenerateSelectedAudio = async (mode = null, engineOverride = null) => {
     if (subtitles.length === 0) {
       alert('No subtitles found. Please transcribe or import subtitles first.');
       return;
+    }
+
+    const chosenEngine = engineOverride || (typeof mode === 'object' && mode?.engine) || ttsEngine || 'edge-tts';
+    if (chosenEngine && chosenEngine !== ttsEngine) {
+      setTtsEngine(chosenEngine);
     }
 
     // Determine target items based on explicit mode or current selection
@@ -1337,10 +1539,11 @@ export default function App() {
     });
 
     setIsGeneratingAudio(true);
-    setStatusMessage(`Generating audio for ${targets.length} lines (Khmer Neural Voice)...`);
+    const engineLabel = chosenEngine === 'mms-offline' ? '⚡ Meta MMS Khmer Offline' : '🌐 Khmer Neural Voice (Online)';
+    setStatusMessage(`Generating audio for ${targets.length} lines (${engineLabel})...`);
     setRenderToast({
       type: 'info',
-      message: `🎙️ Generating Khmer AI audio for ${targets.length} lines...`
+      message: `🎙️ Generating ${engineLabel} audio for ${targets.length} lines...`
     });
 
     setSubtitles((prev) =>
@@ -1369,7 +1572,8 @@ export default function App() {
           use_translation: true,
           voice_male: 'km-KH-PisethNeural',
           voice_female: 'km-KH-SreymomNeural',
-          auto_fit: true
+          auto_fit: true,
+          engine: chosenEngine
         })
       });
 
@@ -1900,9 +2104,28 @@ export default function App() {
         use_translation: subSettings.subtitleMode === 'khmer',
         include_dubbing: wantDubbing,
         mute_original_audio: wantDubbing ? wantMuteOriginal : false,
-        add_logo_watermark: false,
+        add_logo_watermark: Boolean(subSettings.addLogoWatermark),
+        watermark_position: subSettings.watermarkPosition || 'top_right',
+        watermark_size: subSettings.watermarkSize || 90,
+        watermark_opacity: (subSettings.watermarkOpacity || 85) / 100,
+        watermark_margin: subSettings.watermarkMargin || 20,
         background_ducking_volume: 0.25,
         use_amf_gpu: true,
+        enable_delogo: Boolean(subSettings.enableDelogo),
+        delogo_mode: subSettings.delogoMode || 'blur',
+        delogo_area: subSettings.delogoArea || 'bottom_subtitles',
+        delogo_height_pct: (parseFloat(subSettings.delogoHeightPct) || 14) / 100,
+        delogo_x_pct: (parseFloat(subSettings.delogoXPct) || 0) / 100,
+        delogo_y_pct: (parseFloat(subSettings.delogoYPct) || 86) / 100,
+        delogo_w_pct: (parseFloat(subSettings.delogoWPct) || 100) / 100,
+        delogo_shape: subSettings.delogoShape || 'rectangle',
+        enable_anti_copyright: Boolean(subSettings.enableAntiCopyright),
+        anti_copyright_flip: subSettings.antiCopyrightFlip !== undefined ? subSettings.antiCopyrightFlip : true,
+        anti_copyright_zoom: parseFloat(subSettings.antiCopyrightZoom) || 1.03,
+        anti_copyright_color: subSettings.antiCopyrightColor !== undefined ? subSettings.antiCopyrightColor : true,
+        anti_copyright_speed: parseFloat(subSettings.antiCopyrightSpeed) || 1.03,
+        primary_color: (subSettings.stylePreset === 'modern_yellow' || subSettings.stylePreset === 'box_yellow') ? '&H0000FFFF' : '&H00FFFFFF',
+        outline_color: '&H00000000',
         ...(isCustomObject ? customOptions : {})
       };
 
@@ -1926,11 +2149,15 @@ export default function App() {
         }
       }
 
+      const currentQueueItem = videoQueue.find((v) => v.id === activeVideoId) || videoQueue[0];
+      const directFilePath = (isCustomObject && customOptions.video_file_path) || currentQueueItem?.filePath || null;
+
       const res = await fetch('/api/render/burn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           video_filename: filename,
+          video_file_path: directFilePath,
           custom_output_filename: videoFilename || filename,
           job_id: jobId,
           items: renderItems,
@@ -2310,6 +2537,267 @@ export default function App() {
         overflow: 'hidden'
       }}
     >
+      {/* 0. Top Global Studio Bar */}
+      <header
+        style={{
+          height: '46px',
+          backgroundColor: 'var(--bg-panel)',
+          borderBottom: '1px solid var(--border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 14px',
+          flexShrink: 0,
+          gap: '12px',
+          zIndex: 20
+        }}
+      >
+        {/* Left: Brand Logo & Current Video Name */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <img
+              src="/logo.png"
+              alt="MK Movie Logo"
+              style={{
+                width: '26px',
+                height: '26px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)',
+                border: '1px solid rgba(239, 68, 68, 0.6)'
+              }}
+            />
+            <span style={{ fontSize: '13px', fontWeight: 800, letterSpacing: '0.04em', color: '#ffffff' }}>
+              MK <span style={{ color: '#ef4444' }}>MOVIE</span>
+            </span>
+          </div>
+
+          <div
+            style={{
+              height: '16px',
+              width: '1px',
+              backgroundColor: 'var(--border-color)',
+              margin: '0 4px'
+            }}
+          />
+
+          {/* Current Video File Pill */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: 'var(--bg-base)',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              border: '1px solid var(--border-light)',
+              maxWidth: '220px',
+              overflow: 'hidden'
+            }}
+            title={videoFilename || 'No video loaded'}
+          >
+            <Film size={12} style={{ color: '#ef4444', flexShrink: 0 }} />
+            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-bright)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {videoFilename || 'No video active'}
+            </span>
+          </div>
+
+          {videoUrl && (
+            <button
+              type="button"
+              onClick={handleOpenInVlc}
+              disabled={isLaunchingVlc}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 8px',
+                borderRadius: '5px',
+                border: '1px solid rgba(249, 115, 22, 0.45)',
+                backgroundColor: 'rgba(249, 115, 22, 0.15)',
+                color: '#fb923c',
+                fontSize: '10px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                flexShrink: 0
+              }}
+              title="Open video & subtitles in desktop VLC Media Player"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                <path d="m3 21 6.5-17a2 2 0 0 1 3.8 0L21 21" stroke="#f97316" strokeWidth="2.2" fill="#f97316" fillOpacity="0.35" />
+                <path d="M5.5 16h13" stroke="#ffffff" strokeWidth="2.2" />
+                <path d="M8 10h8" stroke="#ffffff" strokeWidth="2.2" />
+              </svg>
+              <span>{isLaunchingVlc ? 'Launching...' : 'VLC Player'}</span>
+            </button>
+          )}
+        </div>
+
+        {/* Center: The Guided 4-Step Workflow Stepper */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          {/* Step 1: Whisper STT */}
+          <button
+            type="button"
+            onClick={() => {
+              setAiModalMode('whisper');
+              setAiModalOpen(true);
+            }}
+            disabled={!videoUrl || isTranscribing}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: !videoUrl || isTranscribing ? 'not-allowed' : 'pointer',
+              border: `1px solid ${subtitles.length > 0 ? '#10b981' : !videoUrl ? 'var(--border-color)' : '#ef4444'}`,
+              backgroundColor: subtitles.length > 0 ? 'rgba(16, 185, 129, 0.15)' : !videoUrl ? 'var(--bg-base)' : 'rgba(239, 68, 68, 0.15)',
+              color: subtitles.length > 0 ? '#34d399' : !videoUrl ? 'var(--text-muted)' : '#f87171',
+              transition: 'all 0.15s ease'
+            }}
+            title="Step 1: Extract subtitles with Whisper STT"
+          >
+            {isTranscribing ? (
+              <RefreshCw size={11} className="animate-spin" />
+            ) : subtitles.length > 0 ? (
+              <Check size={11} style={{ color: '#34d399' }} />
+            ) : (
+              <Mic size={11} />
+            )}
+            <span>1. Auto-Sub</span>
+            {subtitles.length > 0 && <span style={{ fontSize: '10px', opacity: 0.8 }}>({subtitles.length})</span>}
+          </button>
+
+          <ChevronRight size={12} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
+
+          {/* Step 2: Translate to Khmer */}
+          <button
+            type="button"
+            onClick={() => handleStartTranslate({ provider: 'google_free', mode: 'all' })}
+            disabled={subtitles.length === 0 || isTranslating}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: subtitles.length === 0 || isTranslating ? 'not-allowed' : 'pointer',
+              border: `1px solid ${subtitles.some(s => s.translated_text) ? '#10b981' : subtitles.length > 0 ? '#f59e0b' : 'var(--border-color)'}`,
+              backgroundColor: subtitles.some(s => s.translated_text) ? 'rgba(16, 185, 129, 0.15)' : subtitles.length > 0 ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-base)',
+              color: subtitles.some(s => s.translated_text) ? '#34d399' : subtitles.length > 0 ? '#fbbf24' : 'var(--text-muted)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Step 2: Translate original text to Khmer"
+          >
+            {isTranslating ? (
+              <RefreshCw size={11} className="animate-spin" />
+            ) : subtitles.some(s => s.translated_text) ? (
+              <Check size={11} style={{ color: '#34d399' }} />
+            ) : (
+              <Languages size={11} />
+            )}
+            <span>2. Translate Khmer</span>
+          </button>
+
+          <ChevronRight size={12} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
+
+          {/* Step 3: AI Dubbing Voiceover */}
+          <button
+            type="button"
+            onClick={() => handleGenerateSelectedAudio('all')}
+            disabled={subtitles.length === 0 || isGeneratingAudio}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: subtitles.length === 0 || isGeneratingAudio ? 'not-allowed' : 'pointer',
+              border: `1px solid ${subtitles.some(s => s.audio_url || s.audio_status === 'ready') ? '#10b981' : subtitles.some(s => s.translated_text) ? '#c084fc' : 'var(--border-color)'}`,
+              backgroundColor: subtitles.some(s => s.audio_url || s.audio_status === 'ready') ? 'rgba(16, 185, 129, 0.15)' : subtitles.some(s => s.translated_text) ? 'rgba(168, 85, 247, 0.15)' : 'var(--bg-base)',
+              color: subtitles.some(s => s.audio_url || s.audio_status === 'ready') ? '#34d399' : subtitles.some(s => s.translated_text) ? '#c084fc' : 'var(--text-muted)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Step 3: Generate Khmer Edge-TTS Audio Dubbing"
+          >
+            {isGeneratingAudio ? (
+              <RefreshCw size={11} className="animate-spin" />
+            ) : subtitles.some(s => s.audio_url || s.audio_status === 'ready') ? (
+              <Check size={11} style={{ color: '#34d399' }} />
+            ) : (
+              <Volume2 size={11} />
+            )}
+            <span>3. AI Dubbing</span>
+          </button>
+
+          <ChevronRight size={12} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
+
+          {/* Step 4: Export / Split / Burn */}
+          <button
+            type="button"
+            onClick={() => {
+              setExportType('burn');
+              setExportModalOpen(true);
+            }}
+            disabled={!videoUrl}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 12px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: !videoUrl ? 'not-allowed' : 'pointer',
+              border: !videoUrl ? '1px solid var(--border-color)' : 'none',
+              background: !videoUrl
+                ? 'var(--bg-base)'
+                : lastRenderedVideo
+                  ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+                  : 'linear-gradient(135deg, #ef4444 0%, #ea580c 100%)',
+              color: !videoUrl ? 'var(--text-muted)' : '#ffffff',
+              boxShadow: !videoUrl ? 'none' : '0 2px 8px rgba(239, 68, 68, 0.3)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Step 4: Burn subtitles, merge episodes, or split into 30m parts"
+          >
+            <Flame size={12} style={{ color: !videoUrl ? 'var(--text-muted)' : '#ffffff' }} />
+            <span>4. Export Video</span>
+          </button>
+        </div>
+
+        {/* Right: Shortcuts & Settings */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            type="button"
+            onClick={() => setShortcutsModalOpen(true)}
+            className="btn-secondary"
+            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+            title="Keyboard Shortcuts (?)"
+          >
+            <HelpCircle size={13} />
+            <span style={{ fontSize: '10px' }}>Shortcuts</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSettingsModalOpen(true)}
+            className="btn-secondary"
+            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+            title="Studio Settings & Storage Management"
+          >
+            <Settings size={13} />
+            <span style={{ fontSize: '10px' }}>Settings</span>
+          </button>
+        </div>
+      </header>
+
       {/* Main Studio Body: Video Queue Sidebar + Video Player & Tools + Subtitle Table */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
         {/* 1. Far-Left Multi-Video Queue Sidebar */}
@@ -2325,14 +2813,20 @@ export default function App() {
           onBatchRenderAll={handleBatchRenderVideos}
           isBatchRendering={isBatchRendering}
           onCancelBatch={handleCancelBatch}
+          subSettings={subSettings}
+          onUpdateSubSettings={handleUpdateSubSettings}
           onOpenSettings={() => setSettingsModalOpen(true)}
           onOpenShortcuts={() => setShortcutsModalOpen(true)}
+          onOpenExportModal={() => {
+            setExportType('burn');
+            setExportModalOpen(true);
+          }}
         />
 
-        {/* 2. Middle Column: Video Player & Workspace Tools (Full-Space, Zero Scroll) */}
+        {/* 2. Middle Column: Video Player & Workspace Tools (Resizable & Flexible) */}
         <div
           style={{
-            width: '320px',
+            width: `${videoColWidth}px`,
             backgroundColor: 'var(--bg-panel)',
             borderRight: '1px solid var(--border-color)',
             display: 'flex',
@@ -2343,108 +2837,13 @@ export default function App() {
           }}
         >
           <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px', height: '100%', boxSizing: 'border-box' }}>
-            {/* Brand Header */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                paddingBottom: '8px',
-                borderBottom: '1px solid var(--border-color)',
-                flexShrink: 0
-              }}
-            >
-              <img
-                src="/logo.png"
-                alt="MK Movie Logo"
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)',
-                  border: '1px solid rgba(239, 68, 68, 0.6)'
-                }}
-              />
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    letterSpacing: '0.03em',
-                    color: '#ffffff'
-                  }}
-                >
-                  MK <span style={{ color: '#ef4444' }}>MOVIE</span>
-                </span>
-                <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                  Subtitle & Dubbing Studio
-                </span>
-              </div>
-            </div>
-
-            {/* Project / Video Title & VLC Quick Launcher */}
-            <div
-              style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--text-bright)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backgroundColor: 'var(--bg-base)',
-                padding: '4px 8px',
-                borderRadius: '6px',
-                border: '1px solid var(--border-light)',
-                flexShrink: 0
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-                <Film size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {videoFilename || 'No video loaded'}
-                </span>
-              </div>
-
-              {videoUrl && (
-                <button
-                  type="button"
-                  onClick={handleOpenInVlc}
-                  disabled={isLaunchingVlc}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '2px 7px',
-                    borderRadius: '4px',
-                    border: '1px solid rgba(249, 115, 22, 0.45)',
-                    backgroundColor: 'rgba(249, 115, 22, 0.15)',
-                    color: '#fb923c',
-                    fontSize: '10px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    transition: 'all 0.15s ease'
-                  }}
-                  title="Open video & current subtitles in desktop VLC Media Player"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                    <path d="m3 21 6.5-17a2 2 0 0 1 3.8 0L21 21" stroke="#f97316" strokeWidth="2.2" fill="#f97316" fillOpacity="0.35" />
-                    <path d="M5.5 16h13" stroke="#ffffff" strokeWidth="2.2" />
-                    <path d="M8 10h8" stroke="#ffffff" strokeWidth="2.2" />
-                  </svg>
-                  <span>{isLaunchingVlc ? 'Launching...' : 'VLC Player'}</span>
-                </button>
-              )}
-            </div>
-
             {/* Video Canvas Box with VLC Double-click Fullscreen & OSD */}
             <div
               ref={videoContainerRef}
               onDoubleClick={handleToggleFullscreen}
               style={{
                 aspectRatio: '16/9',
-                maxHeight: isFullscreen ? 'none' : '170px',
+                maxHeight: isFullscreen ? 'none' : '230px',
                 backgroundColor: '#000',
                 borderRadius: isFullscreen ? '0' : '8px',
                 border: isFullscreen ? 'none' : '1px solid var(--border-color)',
@@ -2501,67 +2900,6 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Top-left Quick PiP & Fullscreen Hover Buttons */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '6px',
-                      left: '6px',
-                      display: 'flex',
-                      gap: '4px',
-                      zIndex: 8,
-                      opacity: 0.75,
-                      transition: 'opacity 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.75')}
-                  >
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTogglePiP();
-                      }}
-                      style={{
-                        padding: '2px 5px',
-                        backgroundColor: 'rgba(0,0,0,0.65)',
-                        border: '1px solid rgba(255,255,255,0.2)',
-                        borderRadius: '3px',
-                        color: '#cbd5e1',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        fontSize: '9px',
-                        gap: '2px'
-                      }}
-                      title="Picture-in-Picture Floating Window"
-                    >
-                      <Tv size={10} />
-                      <span>PiP</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleFullscreen();
-                      }}
-                      style={{
-                        padding: '2px 5px',
-                        backgroundColor: 'rgba(0,0,0,0.65)',
-                        border: '1px solid rgba(255,255,255,0.2)',
-                        borderRadius: '3px',
-                        color: '#cbd5e1',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        fontSize: '9px'
-                      }}
-                      title="Fullscreen (F)"
-                    >
-                      {isFullscreen ? <Minimize2 size={10} /> : <Maximize2 size={10} />}
-                    </button>
-                  </div>
-
                   {/* Subtitle Overlay with Live Preview of Size, Position & Style */}
                   {activeSub && subSettings.subtitleMode !== 'none' && (
                     <div
@@ -2579,24 +2917,24 @@ export default function App() {
                             ? { top: '50%' }
                             : { bottom: `${Math.max(6, Math.min(48, Math.round((subSettings.verticalOffset || 55) * 0.28)))}px` }
                         ),
-                        backgroundColor: subSettings.stylePreset === 'box_dark'
-                          ? 'rgba(0, 0, 0, 0.92)'
-                          : 'rgba(0, 0, 0, 0.75)',
-                        color: subSettings.stylePreset === 'modern_yellow'
+                        backgroundColor: (subSettings.stylePreset === 'box_dark' || subSettings.stylePreset === 'box_yellow')
+                          ? 'rgba(0, 0, 0, 0.90)'
+                          : 'transparent',
+                        color: (subSettings.stylePreset === 'modern_yellow' || subSettings.stylePreset === 'box_yellow')
                           ? '#facc15'
                           : '#ffffff',
                         fontSize: `${Math.max(10, Math.min(18, Math.round((subSettings.fontSize || 24) * 0.55)))}px`,
                         fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: '4px',
+                        padding: (subSettings.stylePreset === 'box_dark' || subSettings.stylePreset === 'box_yellow') ? '2px 8px' : '1px 4px',
+                        borderRadius: (subSettings.stylePreset === 'box_dark' || subSettings.stylePreset === 'box_yellow') ? '4px' : '0',
                         textAlign: 'center',
                         maxWidth: '92%',
                         pointerEvents: 'none',
                         lineHeight: 1.3,
-                        boxShadow: subSettings.stylePreset === 'box_dark' ? '0 2px 6px rgba(0,0,0,0.8)' : 'none',
-                        textShadow: subSettings.stylePreset === 'classic_white'
-                          ? '1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000'
-                          : '1px 1px 2px rgba(0,0,0,0.8)'
+                        boxShadow: (subSettings.stylePreset === 'box_dark' || subSettings.stylePreset === 'box_yellow') ? '0 2px 6px rgba(0,0,0,0.8)' : 'none',
+                        textShadow: (subSettings.stylePreset === 'box_dark' || subSettings.stylePreset === 'box_yellow')
+                          ? '1px 1px 2px rgba(0,0,0,0.8)'
+                          : '1.5px 1.5px 0 #000, -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 0 2px 4px rgba(0,0,0,0.9)'
                       }}
                     >
                       {subSettings.subtitleMode === 'original'
@@ -2741,7 +3079,7 @@ export default function App() {
 
                 {/* Right Controls: Speed, Subs, VLC Volume (0-150%), Fullscreen */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {/* VLC Playback Speed Switcher */}
+                  {/* VLC Speed Switcher */}
                   <button
                     onClick={handleCycleSpeed}
                     className="btn-secondary"
@@ -2757,28 +3095,6 @@ export default function App() {
                     disabled={!videoUrl}
                   >
                     <span>{playbackSpeed}x</span>
-                  </button>
-
-                  {/* Subtitle Styling Shortcut */}
-                  <button
-                    onClick={() => {
-                      setExportType('burn');
-                      setExportModalOpen(true);
-                    }}
-                    className="btn-secondary"
-                    style={{
-                      padding: '3px 6px',
-                      fontSize: '10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '3px',
-                      color: subSettings.subtitleMode === 'none' ? 'var(--text-muted)' : '#f59e0b',
-                      borderColor: subSettings.subtitleMode === 'none' ? 'var(--border-color)' : 'rgba(245, 158, 11, 0.4)'
-                    }}
-                    title="Subtitle Settings: Customize text size, position & style"
-                  >
-                    <Sliders size={11} />
-                    <span>Subs ({subSettings.subtitleMode === 'none' ? 'Off' : `${subSettings.fontSize}px`})</span>
                   </button>
 
                   {/* VLC Volume Boost (0% - 150%) */}
@@ -2855,6 +3171,17 @@ export default function App() {
                     )}
                   </div>
 
+                  {/* Picture-in-Picture Button */}
+                  <button
+                    onClick={handleTogglePiP}
+                    className="btn-secondary"
+                    style={{ padding: '3px 6px' }}
+                    title="Picture-in-Picture Floating Window"
+                    disabled={!videoUrl}
+                  >
+                    <Tv size={11} />
+                  </button>
+
                   {/* Fullscreen Button */}
                   <button
                     onClick={handleToggleFullscreen}
@@ -2907,8 +3234,8 @@ export default function App() {
                 )}
               </div>
 
-              {/* 3-Column Buttons: Export SRT, Import SRT, Merge Files */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+              {/* 4-Column Buttons: Export SRT, Import SRT, Merge Files, Split Video */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
                 {/* 1. Export SRT */}
                 <button
                   onClick={handleExportSRT}
@@ -2932,7 +3259,7 @@ export default function App() {
                   title="Export SRT asking where to save"
                 >
                   <Download size={13} style={{ color: '#06b6d4' }} />
-                  <span>Export</span>
+                  <span>Export SRT</span>
                 </button>
 
                 {/* 2. Import Subtitles (SRT) */}
@@ -2964,7 +3291,7 @@ export default function App() {
                     }}
                   />
                   <FileText size={13} style={{ color: '#f59e0b' }} />
-                  <span>Import</span>
+                  <span>Import SRT</span>
                 </label>
 
                 {/* 3. Merge Video Files */}
@@ -2992,6 +3319,140 @@ export default function App() {
                 >
                   <Layers size={13} style={{ color: '#38bdf8' }} />
                   <span>Merge</span>
+                </button>
+
+                {/* 4. Split Video */}
+                <button
+                  onClick={() => {
+                    setExportType('split');
+                    setExportModalOpen(true);
+                  }}
+                  className="btn-secondary"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    padding: '8px 4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    color: '#c084fc',
+                    borderColor: 'rgba(168, 85, 247, 0.35)',
+                    backgroundColor: 'rgba(168, 85, 247, 0.08)'
+                  }}
+                  title="Split video into custom 30-minute parts"
+                >
+                  <Scissors size={13} style={{ color: '#c084fc' }} />
+                  <span>Split</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Live Subtitle & Video Styling Quick Bar */}
+            <div
+              style={{
+                backgroundColor: 'var(--bg-base)',
+                border: '1px solid var(--border-light)',
+                borderRadius: '8px',
+                padding: '8px 10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-bright)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Sliders size={12} style={{ color: '#f59e0b' }} /> Subtitle Styling
+                </span>
+                <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 500 }}>
+                  ● Live Preview
+                </span>
+              </div>
+
+              {/* Style Presets */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+                {[
+                  { id: 'modern_yellow', label: '⭐ Yellow' },
+                  { id: 'box_dark', label: '⬛ Box Dark' },
+                  { id: 'clean_white', label: '⚪ White' }
+                ].map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      const next = { ...subSettings, stylePreset: preset.id };
+                      setSubSettings(next);
+                      localStorage.setItem('mk_sub_settings', JSON.stringify(next));
+                    }}
+                    style={{
+                      padding: '4px 2px',
+                      fontSize: '10px',
+                      fontWeight: subSettings.stylePreset === preset.id ? 600 : 400,
+                      borderRadius: '5px',
+                      border: `1px solid ${subSettings.stylePreset === preset.id ? '#f59e0b' : 'var(--border-color)'}`,
+                      backgroundColor: subSettings.stylePreset === preset.id ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-elevated)',
+                      color: subSettings.stylePreset === preset.id ? '#fbbf24' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Font Size & Censorship Blur */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', paddingTop: '2px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Size:</span>
+                  <input
+                    type="range"
+                    min="16"
+                    max="48"
+                    step="2"
+                    value={subSettings.fontSize || 24}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      const next = { ...subSettings, fontSize: val };
+                      setSubSettings(next);
+                      localStorage.setItem('mk_sub_settings', JSON.stringify(next));
+                    }}
+                    style={{ flex: 1, accentColor: '#f59e0b', height: '4px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '10px', fontWeight: 600, color: '#f59e0b', minWidth: '28px' }}>
+                    {subSettings.fontSize || 24}px
+                  </span>
+                </div>
+
+                {/* Quick Blur Toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = { ...subSettings, enableDelogo: !subSettings.enableDelogo };
+                    setSubSettings(next);
+                    localStorage.setItem('mk_sub_settings', JSON.stringify(next));
+                  }}
+                  style={{
+                    padding: '3px 7px',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    borderRadius: '5px',
+                    border: `1px solid ${subSettings.enableDelogo ? 'rgba(245, 158, 11, 0.45)' : 'var(--border-color)'}`,
+                    backgroundColor: subSettings.enableDelogo ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-elevated)',
+                    color: subSettings.enableDelogo ? '#f59e0b' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Censor original hardcoded foreign subtitles with a blur box"
+                >
+                  <EyeOff size={11} />
+                  <span>Blur {subSettings.enableDelogo ? 'ON' : 'OFF'}</span>
                 </button>
               </div>
             </div>
@@ -3032,24 +3493,6 @@ export default function App() {
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {renderToast.message}
                   </span>
-                  {renderToast.type === 'success' && (
-                    <button
-                      onClick={handleOpenExportsFolder}
-                      style={{
-                        background: 'none',
-                        border: '1px solid #34d399',
-                        borderRadius: '4px',
-                        color: '#34d399',
-                        padding: '1px 5px',
-                        fontSize: '9px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap'
-                      }}
-                      title="Open output folder in Windows Explorer"
-                    >
-                      Open 📂
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -3215,6 +3658,21 @@ export default function App() {
           </div>
         </div>
 
+        {/* Draggable Divider to Resize Video Column */}
+        <div
+          onMouseDown={handleDividerMouseDown}
+          style={{
+            width: '6px',
+            cursor: 'col-resize',
+            backgroundColor: isDraggingDivider ? 'var(--accent-primary)' : 'transparent',
+            borderLeft: '1px solid var(--border-color)',
+            transition: 'background-color 0.15s ease',
+            userSelect: 'none',
+            flexShrink: 0
+          }}
+          title="Drag to resize video player"
+        />
+
         {/* Right Side: Subtitle Data Table (Clean Slate Ready) */}
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, height: '100%' }}>
           <SubtitleDataTable
@@ -3233,8 +3691,16 @@ export default function App() {
               setAiModalOpen(true);
             }}
             isTranslating={isTranslating}
-            onGenerateAudioClick={(mode) => handleGenerateSelectedAudio(mode)}
+            onGenerateAudioClick={(mode, engine) => handleGenerateSelectedAudio(mode, engine)}
             isGeneratingAudio={isGeneratingAudio}
+            ttsEngine={ttsEngine}
+            onTtsEngineChange={setTtsEngine}
+            onSubtitleUpload={handleSubtitleUpload}
+            onOpenWhisperModal={() => {
+              setAiModalMode('whisper');
+              setAiModalOpen(true);
+            }}
+            hasVideoLoaded={Boolean(videoUrl)}
           />
         </div>
       </div>
@@ -3313,8 +3779,12 @@ export default function App() {
           </span>
         </div>
 
-        <div>
-          <span>Memory Usage: Normal</span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            💡 <kbd style={{ padding: '1px 4px', background: 'var(--bg-elevated)', borderRadius: '3px', border: '1px solid var(--border-color)', fontSize: '10px' }}>Space</kbd> Play/Pause &nbsp;•&nbsp;
+            <kbd style={{ padding: '1px 4px', background: 'var(--bg-elevated)', borderRadius: '3px', border: '1px solid var(--border-color)', fontSize: '10px' }}>Tab</kbd> Next &nbsp;•&nbsp;
+            <kbd style={{ padding: '1px 4px', background: 'var(--bg-elevated)', borderRadius: '3px', border: '1px solid var(--border-color)', fontSize: '10px' }}>,</kbd> / <kbd style={{ padding: '1px 4px', background: 'var(--bg-elevated)', borderRadius: '3px', border: '1px solid var(--border-color)', fontSize: '10px' }}>.</kbd> Frame Step
+          </span>
         </div>
       </div>
 
@@ -3335,6 +3805,8 @@ export default function App() {
         isOpen={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         type={exportType}
+        videoUrl={videoUrl || (videoQueue.find((v) => v.id === activeVideoId)?.url) || (videoQueue[0]?.url) || (videoServerFilename ? `/api/video/${videoServerFilename}` : null)}
+        currentTime={currentTime}
         onExportSubs={handleExportSRT}
         onRenderBurn={handleOneClickRender}
         onSaveRenderedVideo={handleSaveRenderedVideo}

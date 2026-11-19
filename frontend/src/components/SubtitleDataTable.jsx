@@ -28,9 +28,15 @@ export default function SubtitleDataTable({
   onOpenTranslateModal,
   isTranslating,
   onGenerateAudioClick,
-  isGeneratingAudio = false
+  isGeneratingAudio = false,
+  ttsEngine = 'edge-tts',
+  onTtsEngineChange,
+  onSubtitleUpload,
+  onOpenWhisperModal,
+  hasVideoLoaded
 }) {
   const lastSelectedIndexRef = useRef(null);
+  const subFileInputRef = useRef(null);
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'ready' | 'error' | 'pending' | 'generating'
 
   // Calculate audio status counts
@@ -119,7 +125,7 @@ export default function SubtitleDataTable({
     e.stopPropagation();
     onSelectIds([item.id]);
     if (onGenerateAudioClick) {
-      onGenerateAudioClick('selected');
+      onGenerateAudioClick('selected', ttsEngine);
     }
   };
 
@@ -307,73 +313,103 @@ export default function SubtitleDataTable({
               )}
             </div>
 
-            {/* Generate Selected Audio Button Group */}
+            {/* Clear Separation: Online (Edge-TTS Cloud) vs Offline (Meta MMS Local) */}
             <div
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                borderRadius: '6px',
-                overflow: 'hidden',
-                boxShadow: '0 2px 6px rgba(239, 68, 68, 0.3)'
+                gap: '6px',
+                backgroundColor: 'rgba(15, 23, 42, 0.5)',
+                padding: '3px 4px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-light)'
               }}
             >
+              {/* Button 1: 🌐 Generate Online (Piseth/Sreymom Natural Studio Voice) */}
               <button
                 type="button"
-                onClick={() => onGenerateAudioClick && onGenerateAudioClick(selectedIds.length > 0 && selectedIds.length < subtitles.length ? 'selected' : 'all')}
+                onClick={() => {
+                  if (onTtsEngineChange) onTtsEngineChange('edge-tts');
+                  if (onGenerateAudioClick) onGenerateAudioClick(selectedIds.length > 0 && selectedIds.length < subtitles.length ? 'selected' : 'all', 'edge-tts');
+                }}
                 disabled={isGeneratingAudio || subtitles.length === 0}
                 style={{
-                  padding: '6px 11px',
+                  padding: '6px 12px',
                   fontSize: '11px',
                   fontWeight: 600,
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  backgroundColor: isGeneratingAudio ? '#b91c1c' : '#ef4444',
-                  color: '#fff',
-                  border: 'none',
+                  borderRadius: '6px',
+                  border: ttsEngine === 'edge-tts' ? '1px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.3)',
+                  backgroundColor: isGeneratingAudio && ttsEngine === 'edge-tts'
+                    ? '#1d4ed8'
+                    : ttsEngine === 'edge-tts'
+                    ? '#2563eb'
+                    : 'rgba(37, 99, 235, 0.15)',
+                  color: '#ffffff',
                   cursor: isGeneratingAudio || subtitles.length === 0 ? 'not-allowed' : 'pointer',
                   opacity: isGeneratingAudio || subtitles.length === 0 ? 0.65 : 1,
+                  boxShadow: ttsEngine === 'edge-tts' ? '0 2px 8px rgba(37, 99, 235, 0.35)' : 'none',
                   transition: 'all 0.15s ease'
                 }}
-                title={
-                  selectedIds.length > 0 && selectedIds.length < subtitles.length
-                    ? `Generate Khmer AI Neural Voice for ${selectedIds.length} selected lines`
-                    : `Generate Khmer AI Neural Voice for all ${subtitles.length} lines`
-                }
+                title="Microsoft Cloud Neural Voice (Piseth & Sreymom Natural Studio Voice) - 100% Online Only"
               >
-                {isGeneratingAudio ? (
+                {isGeneratingAudio && ttsEngine === 'edge-tts' ? (
                   <Loader2 size={13} className="animate-spin" />
                 ) : (
                   <Volume2 size={13} />
                 )}
-                {isGeneratingAudio
-                  ? 'Generating Audio...'
-                  : selectedIds.length > 0 && selectedIds.length < subtitles.length
-                  ? `Generate Voice (${selectedIds.length})`
-                  : `Generate Voice (All ${subtitles.length})`}
+                <span>
+                  🌐 Online ({selectedIds.length > 0 && selectedIds.length < subtitles.length ? selectedIds.length : subtitles.length})
+                </span>
+                <span style={{ fontSize: '9px', opacity: 0.9, padding: '1px 4px', borderRadius: '3px', backgroundColor: 'rgba(0,0,0,0.25)' }}>
+                  Cloud
+                </span>
               </button>
 
-              {/* If subset selected, provide a quick 'All' audio generation shortcut */}
-              {selectedIds.length > 0 && selectedIds.length < subtitles.length && (
-                <button
-                  type="button"
-                  onClick={() => onGenerateAudioClick && onGenerateAudioClick('all')}
-                  disabled={isGeneratingAudio}
-                  style={{
-                    padding: '6px 8px',
-                    fontSize: '10px',
-                    fontWeight: 600,
-                    backgroundColor: '#b91c1c',
-                    color: '#fecaca',
-                    border: 'none',
-                    borderLeft: '1px solid rgba(255, 255, 255, 0.25)',
-                    cursor: isGeneratingAudio ? 'not-allowed' : 'pointer'
-                  }}
-                  title={`Generate Khmer AI Voice for all ${subtitles.length} lines`}
-                >
-                  All ({subtitles.length})
-                </button>
-              )}
+              {/* Button 2: ⚡ Generate Offline (Meta MMS Khmer 100% Local PC) */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onTtsEngineChange) onTtsEngineChange('mms-offline');
+                  if (onGenerateAudioClick) onGenerateAudioClick(selectedIds.length > 0 && selectedIds.length < subtitles.length ? 'selected' : 'all', 'mms-offline');
+                }}
+                disabled={isGeneratingAudio || subtitles.length === 0}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  borderRadius: '6px',
+                  border: ttsEngine === 'mms-offline' ? '1px solid #10b981' : '1px solid rgba(16, 185, 129, 0.3)',
+                  backgroundColor: isGeneratingAudio && ttsEngine === 'mms-offline'
+                    ? '#047857'
+                    : ttsEngine === 'mms-offline'
+                    ? '#059669'
+                    : 'rgba(16, 185, 129, 0.15)',
+                  color: '#ffffff',
+                  cursor: isGeneratingAudio || subtitles.length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: isGeneratingAudio || subtitles.length === 0 ? 0.65 : 1,
+                  boxShadow: ttsEngine === 'mms-offline' ? '0 2px 8px rgba(16, 185, 129, 0.35)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Meta MMS-TTS Khmer (100% Offline, runs locally on your PC, No Internet Needed)"
+              >
+                {isGeneratingAudio && ttsEngine === 'mms-offline' ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Sparkles size={13} />
+                )}
+                <span>
+                  ⚡ Offline ({selectedIds.length > 0 && selectedIds.length < subtitles.length ? selectedIds.length : subtitles.length})
+                </span>
+                <span style={{ fontSize: '9px', opacity: 0.9, padding: '1px 4px', borderRadius: '3px', backgroundColor: 'rgba(0,0,0,0.25)' }}>
+                  Local
+                </span>
+              </button>
             </div>
 
             {/* Set All Voices */}
@@ -776,12 +812,98 @@ export default function SubtitleDataTable({
                   <td
                     colSpan={6}
                     style={{
-                      padding: '48px 16px',
+                      padding: '60px 20px',
                       textAlign: 'center',
                       color: 'var(--text-muted)'
                     }}
                   >
-                    No subtitle data loaded. Import an SRT file or click Transcribe to generate.
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', maxWidth: '420px', margin: '0 auto' }}>
+                      <div
+                        style={{
+                          width: '52px',
+                          height: '52px',
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                          border: '1px solid rgba(56, 189, 248, 0.25)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#38bdf8'
+                        }}
+                      >
+                        <FileText size={24} />
+                      </div>
+                      
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-bright)' }}>
+                        No Subtitles Loaded Yet
+                      </div>
+                      
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                        Import an existing subtitle file (.srt, .vtt) or use AI Whisper STT to automatically detect and transcribe speech from your video.
+                      </div>
+
+                      <input
+                        ref={subFileInputRef}
+                        type="file"
+                        accept=".srt,.vtt,.ass"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0] && onSubtitleUpload) {
+                            onSubtitleUpload(e.target.files[0]);
+                          }
+                        }}
+                      />
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => subFileInputRef.current && subFileInputRef.current.click()}
+                          style={{
+                            padding: '7px 14px',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(245, 158, 11, 0.4)',
+                            backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                            color: '#fbbf24',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <FileText size={13} style={{ color: '#f59e0b' }} />
+                          <span>Import SRT File</span>
+                        </button>
+
+                        {onOpenWhisperModal && (
+                          <button
+                            type="button"
+                            onClick={onOpenWhisperModal}
+                            disabled={!hasVideoLoaded}
+                            style={{
+                              padding: '7px 14px',
+                              borderRadius: '6px',
+                              border: !hasVideoLoaded ? '1px solid var(--border-color)' : '1px solid rgba(239, 68, 68, 0.4)',
+                              backgroundColor: !hasVideoLoaded ? 'var(--bg-elevated)' : 'rgba(239, 68, 68, 0.15)',
+                              color: !hasVideoLoaded ? 'var(--text-muted)' : '#f87171',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: !hasVideoLoaded ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title={!hasVideoLoaded ? 'Load a video first to extract subtitles' : 'Extract speech from video using Whisper AI'}
+                          >
+                            <Sparkles size={13} style={{ color: !hasVideoLoaded ? 'var(--text-muted)' : '#ef4444' }} />
+                            <span>Auto-Sub with Whisper AI</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ) : filteredSubtitles.length === 0 ? (
@@ -972,36 +1094,60 @@ export default function SubtitleDataTable({
                             <Loader2 size={15} className="animate-spin" style={{ color: 'var(--accent-text)' }} />
                           </div>
                         ) : item.audio_url || item.audio_status === 'ready' ? (
-                          <button
-                            onClick={() => onPlayAudioItem(item)}
-                            style={{
-                              padding: '6px',
-                              borderRadius: '6px',
-                              border: 'none',
-                              backgroundColor: isPlayingThis ? '#10b981' : 'var(--bg-hover)',
-                              color: isPlayingThis ? '#fff' : 'var(--accent-text)',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              transition: 'all 0.15s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!isPlayingThis) {
-                                e.currentTarget.style.backgroundColor = 'var(--accent-primary)';
-                                e.currentTarget.style.color = '#fff';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!isPlayingThis) {
-                                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                                e.currentTarget.style.color = 'var(--accent-text)';
-                              }
-                            }}
-                            title={isPlayingThis ? 'Playing... Click to stop' : 'Click to preview audio'}
-                          >
-                            <Volume2 size={14} />
-                          </button>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                            <button
+                              onClick={() => onPlayAudioItem(item)}
+                              style={{
+                                padding: '5px 7px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                backgroundColor: isPlayingThis ? '#10b981' : 'var(--bg-hover)',
+                                color: isPlayingThis ? '#fff' : 'var(--accent-text)',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease'
+                              }}
+                              title={isPlayingThis ? 'Playing... Click to stop' : 'Click to preview audio'}
+                            >
+                              <Volume2 size={13} />
+                            </button>
+                            <span
+                              style={{
+                                fontSize: '9px',
+                                padding: '1px 5px',
+                                borderRadius: '3px',
+                                fontWeight: 600,
+                                backgroundColor: item.audio_engine === 'mms-offline' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
+                                color: item.audio_engine === 'mms-offline' ? '#34d399' : '#60a5fa',
+                                border: item.audio_engine === 'mms-offline' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)'
+                              }}
+                              title={item.audio_engine === 'mms-offline' ? 'Meta MMS Khmer (Offline Engine)' : 'Microsoft Edge-TTS (Cloud Neural Voice)'}
+                            >
+                              {item.audio_engine === 'mms-offline' ? '⚡ Local' : '🌐 Cloud'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleRetrySingle(item, e)}
+                              disabled={isGeneratingAudio}
+                              style={{
+                                padding: '4px 5px',
+                                borderRadius: '5px',
+                                border: '1px solid var(--border-light)',
+                                backgroundColor: 'transparent',
+                                color: 'var(--text-muted)',
+                                cursor: isGeneratingAudio ? 'not-allowed' : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease'
+                              }}
+                              title={`Re-generate voice (${ttsEngine === 'mms-offline' ? '⚡ Offline' : '🌐 Online'})`}
+                            >
+                              <RotateCcw size={11} />
+                            </button>
+                          </div>
                         ) : isError ? (
                           <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                             <span
@@ -1049,24 +1195,37 @@ export default function SubtitleDataTable({
                                   e.currentTarget.style.color = '#fca5a5';
                                 }
                               }}
-                              title="Regenerate audio for this line"
+                              title={`Retry voice generation (${ttsEngine === 'mms-offline' ? '⚡ Offline' : '🌐 Online'})`}
                             >
                               <RotateCcw size={11} />
                             </button>
                           </div>
                         ) : (
-                          <span
-                            style={{
-                              color: 'var(--text-muted)',
-                              fontSize: '11px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px'
-                            }}
-                            title="No audio generated yet"
-                          >
-                            <Clock size={11} /> Pending
-                          </span>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                            <button
+                              type="button"
+                              onClick={(e) => handleRetrySingle(item, e)}
+                              disabled={isGeneratingAudio}
+                              style={{
+                                padding: '3px 6px',
+                                borderRadius: '4px',
+                                border: '1px solid var(--border-light)',
+                                backgroundColor: 'var(--bg-hover)',
+                                color: 'var(--text-muted)',
+                                cursor: isGeneratingAudio ? 'not-allowed' : 'pointer',
+                                fontSize: '10px',
+                                fontWeight: 500,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                transition: 'all 0.15s ease'
+                              }}
+                              title={`Generate audio for this line (${ttsEngine === 'mms-offline' ? '⚡ Offline MMS' : '🌐 Online Cloud'})`}
+                            >
+                              <Volume2 size={11} style={{ color: item.gender === 'Female' ? '#f472b6' : '#818cf8' }} />
+                              <span>Dub</span>
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>

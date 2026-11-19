@@ -310,10 +310,11 @@ export default function AIModal({
               <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
                 Translation Engine:
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>
                 {[
-                  { id: 'google_free', label: 'Google Translate (Free, Instant)' },
-                  { id: 'gemini', label: 'Google Gemini AI (Cinematic Context)' }
+                  { id: 'google_free', label: 'Google Translate (Online)' },
+                  { id: 'gemini', label: 'Gemini AI (Context)' },
+                  { id: 'nllb_offline', label: '⚡ Meta NLLB (Offline)' }
                 ].map((p) => (
                   <button
                     key={p.id}
@@ -334,6 +335,24 @@ export default function AIModal({
                 ))}
               </div>
             </div>
+
+            {provider === 'nllb_offline' && (
+              <div
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  fontSize: '12px',
+                  color: '#34d399',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <span>⚡ <strong>100% Offline AI Mode:</strong> Meta NLLB-200 translates to Khmer locally on your PC. No internet connection required!</span>
+              </div>
+            )}
 
             {provider === 'gemini' && (
               <div>

@@ -10,11 +10,10 @@ import {
   Plus,
   RefreshCw,
   Layers,
-  Settings,
   Flame,
   Square,
-  Keyboard,
-  FolderPlus
+  FolderPlus,
+  EyeOff
 } from 'lucide-react';
 import { formatTime } from '../utils/time_formatter';
 
@@ -31,7 +30,10 @@ export default function VideoQueueSidebar({
   onBatchRenderAll,
   isBatchRendering = false,
   onCancelBatch,
-  onOpenShortcuts
+  onOpenShortcuts,
+  subSettings,
+  onUpdateSubSettings,
+  onOpenExportModal
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const fileInputRef = useRef(null);
@@ -346,44 +348,6 @@ export default function VideoQueueSidebar({
         </button>
 
         <button
-          onClick={onOpenSettings}
-          style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '6px',
-            backgroundColor: 'var(--bg-hover)',
-            border: '1px solid var(--border-light)',
-            color: 'var(--accent-text)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
-          title="Studio Settings & Themes (ប្តូរ Theme)"
-        >
-          <Settings size={15} />
-        </button>
-
-        <button
-          onClick={onOpenShortcuts}
-          style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '6px',
-            backgroundColor: 'var(--bg-hover)',
-            border: '1px solid var(--border-light)',
-            color: 'var(--text-secondary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
-          title="Keyboard Shortcuts Cheat Sheet (?)"
-        >
-          <Keyboard size={15} />
-        </button>
-
-        <button
           onClick={() => fileInputRef.current && fileInputRef.current.click()}
           style={{
             width: '32px',
@@ -570,44 +534,6 @@ export default function VideoQueueSidebar({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <button
-            onClick={onOpenSettings}
-            style={{
-              width: '26px',
-              height: '26px',
-              borderRadius: '6px',
-              backgroundColor: 'var(--bg-hover)',
-              border: '1px solid var(--border-light)',
-              color: 'var(--accent-text)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-            title="Studio Settings & Themes (ប្តូរ Theme)"
-          >
-            <Settings size={13} />
-          </button>
-          <button
-            onClick={onOpenShortcuts}
-            style={{
-              width: '26px',
-              height: '26px',
-              borderRadius: '6px',
-              backgroundColor: 'var(--bg-hover)',
-              border: '1px solid var(--border-light)',
-              color: 'var(--text-secondary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-            title="Keyboard Shortcuts Cheat Sheet (?)"
-          >
-            <Keyboard size={13} />
-          </button>
           <button
             onClick={() => fileInputRef.current && fileInputRef.current.click()}
             style={{
@@ -815,6 +741,34 @@ export default function VideoQueueSidebar({
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {/* Shape Blur quick indicator / toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onUpdateSubSettings) {
+                  onUpdateSubSettings({ enableDelogo: !subSettings?.enableDelogo });
+                }
+              }}
+              style={{
+                fontSize: '10px',
+                fontWeight: 600,
+                color: subSettings?.enableDelogo ? '#f59e0b' : '#6b7280',
+                backgroundColor: subSettings?.enableDelogo ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
+                padding: '3px 6px',
+                borderRadius: '5px',
+                border: subSettings?.enableDelogo ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(107, 114, 128, 0.3)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px',
+                transition: 'all 0.15s ease'
+              }}
+              title={subSettings?.enableDelogo ? "Shape Blur & Subtitle Censorship is ON (Active for Render). Click to toggle OFF, or use Studio Tools to customize area." : "Shape Blur & Subtitle Censorship is OFF. Click to turn ON."}
+            >
+              <EyeOff size={10} style={{ color: subSettings?.enableDelogo ? '#f59e0b' : 'inherit' }} />
+              <span>{subSettings?.enableDelogo ? 'Blur ON' : 'Blur OFF'}</span>
+            </button>
+
             <button
               onClick={() => onBatchProcessAll(selectedQueueIds)}
               disabled={queue.length === 0 || selectedQueueIds.length === 0}
@@ -855,7 +809,7 @@ export default function VideoQueueSidebar({
                 boxShadow: selectedQueueIds.length > 0 ? '0 2px 8px rgba(239, 68, 68, 0.3)' : 'none',
                 transition: 'all 0.15s ease'
               }}
-              title="One-Click Batch Render: Auto STT + TTS + Burn Subtitles & Mute foreign voice -> Export MP4s to folder"
+              title={`One-Click Batch Render: Auto STT + TTS + Burn Subtitles & Mute foreign voice -> Export MP4s to folder${subSettings?.enableDelogo ? ' [Shape Blur Censorship: ACTIVE]' : ''}`}
             >
               <Flame size={10} /> Render ({selectedQueueIds.length})
             </button>

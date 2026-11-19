@@ -28,35 +28,44 @@ def register_media_path(path_str: Optional[str]):
     except Exception:
         pass
 
-def resolve_media_file(filename: Optional[str] = None) -> Path:
+def resolve_media_file(filename: Optional[str] = None, require_video: bool = False) -> Path:
     """
     Robustly resolves a video or audio file by:
     1. Direct file path on disk (absolute or relative)
     2. Exact filename or stem in UPLOADS_DIR or AUDIO_CACHE_DIR
     3. Stripping URL prefixes (/api/video/, /api/audio/)
     4. Substring / fuzzy stem match in uploads (e.g. vid_<uuid>_<original_stem>.mp4)
-    5. Searching in known media directories on the host disk
-    6. Fallback to single or most recent video in uploads
+    5. Searching in known media directories and common media folders on the host disk
+    6. Fallback to single or most recent video in uploads (never audio if require_video=True)
     """
+    valid_video_exts = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".m4v", ".ts"}
+    is_video_query = require_video or (filename and Path(str(filename).split("?")[0]).suffix.lower() in valid_video_exts)
+
     if filename:
         candidate = Path(filename)
         if candidate.is_file() and candidate.exists():
-            register_media_path(str(candidate))
-            return candidate
+            if not is_video_query or candidate.suffix.lower() in valid_video_exts:
+                register_media_path(str(candidate))
+                return candidate
 
         clean_name = Path(str(filename).replace("/api/video/", "").replace("/api/audio/", "").split("?")[0]).name
         clean_stem = Path(clean_name).stem.lower()
 
+        search_storage_dirs = [UPLOADS_DIR] if is_video_query else [UPLOADS_DIR, AUDIO_CACHE_DIR]
+
         # 1. Exact match in standard storage dirs
-        for d in [UPLOADS_DIR, AUDIO_CACHE_DIR]:
+        for d in search_storage_dirs:
             p = d / clean_name
             if p.exists() and p.is_file():
-                return p
+                if not is_video_query or p.suffix.lower() in valid_video_exts:
+                    return p
 
         # 2. Check stem / substring match in storage dirs (supports vid_<uuid>_<stem>.ext)
-        for directory in [UPLOADS_DIR, AUDIO_CACHE_DIR]:
+        for directory in search_storage_dirs:
             for f in directory.glob("*"):
                 if f.is_file() and not f.name.startswith(".gitkeep"):
+                    if is_video_query and f.suffix.lower() not in valid_video_exts:
+                        continue
                     f_name_lower = f.name.lower()
                     f_stem_lower = f.stem.lower()
                     if f_name_lower == clean_name.lower() or f_stem_lower == clean_stem:
@@ -64,31 +73,61 @@ def resolve_media_file(filename: Optional[str] = None) -> Path:
                     if clean_stem and (clean_stem in f_stem_lower or f_stem_lower in clean_stem):
                         return f
 
-        # 3. Check known external media directories on disk
-        for d in list(KNOWN_MEDIA_DIRS):
+        # 3. Check known external media directories and host media drives on disk
+        candidate_dirs = list(KNOWN_MEDIA_DIRS)
+        for host_dir in [Path("D:/Media Video"), Path("D:/Media Video/Hongguo"), Path.home() / "Videos"]:
+            if host_dir.exists() and host_dir.is_dir() and host_dir not in candidate_dirs:
+                candidate_dirs.append(host_dir)
+
+        for d in candidate_dirs:
             if d.exists() and d.is_dir():
+                # Direct check
                 p = d / clean_name
                 if p.exists() and p.is_file():
-                    return p
-                # Check stem match in known media dirs
+                    if not is_video_query or p.suffix.lower() in valid_video_exts:
+                        register_media_path(str(p))
+                        return p
+                # Check immediate files in folder
                 for f in d.glob("*"):
-                    if f.is_file() and (f.name.lower() == clean_name.lower() or f.stem.lower() == clean_stem):
-                        return f
+                    if f.is_file():
+                        if is_video_query and f.suffix.lower() not in valid_video_exts:
+                            continue
+                        if f.name.lower() == clean_name.lower() or f.stem.lower() == clean_stem:
+                            register_media_path(str(f))
+                            return f
+                # Check one level deep subfolders (e.g. D:/Media Video/Series_Name/Episode 091.mp4)
+                try:
+                    for sub in d.iterdir():
+                        if sub.is_dir():
+                            sub_p = sub / clean_name
+                            if sub_p.exists() and sub_p.is_file():
+                                if not is_video_query or sub_p.suffix.lower() in valid_video_exts:
+                                    register_media_path(str(sub_p))
+                                    return sub_p
+                            for f in sub.glob("*"):
+                                if f.is_file():
+                                    if is_video_query and f.suffix.lower() not in valid_video_exts:
+                                        continue
+                                    if f.name.lower() == clean_name.lower() or f.stem.lower() == clean_stem:
+                                        register_media_path(str(f))
+                                        return f
+                except Exception:
+                    pass
 
     # Fallback to single or most recent video in uploads
-    valid_video_exts = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".m4v", ".ts"}
     all_uploads = [f for f in UPLOADS_DIR.glob("*") if f.is_file() and not f.name.startswith(".gitkeep") and f.suffix.lower() in valid_video_exts]
     if all_uploads:
         all_uploads.sort(key=lambda x: x.stat().st_mtime, reverse=True)
         return all_uploads[0]
 
-    # Fallback to any audio in audio_cache
-    all_cache = [f for f in AUDIO_CACHE_DIR.glob("*") if f.is_file() and not f.name.startswith(".gitkeep") and f.suffix.lower() in [".mp3", ".wav", ".m4a", ".aac"]]
-    if all_cache:
-        all_cache.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-        return all_cache[0]
+    # Audio fallback ONLY allowed if not a video query
+    if not is_video_query:
+        all_cache = [f for f in AUDIO_CACHE_DIR.glob("*") if f.is_file() and not f.name.startswith(".gitkeep") and f.suffix.lower() in [".mp3", ".wav", ".m4a", ".aac"]]
+        if all_cache:
+            all_cache.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            return all_cache[0]
 
-    raise FileNotFoundError(f"Media file '{filename or 'unknown'}' not found in uploads or audio cache.")
+    raise FileNotFoundError(f"Video file '{filename or 'unknown'}' not found on server or disk. Please select or upload the video.")
 
 def extract_audio_for_whisper(video_path: Path, output_wav: Path) -> bool:
     """Extracts 16kHz mono audio optimized for Whisper STT and voice pitch analysis"""
@@ -182,17 +221,25 @@ def _ensure_whisper_assets_patched():
     import shutil
     from ..config import BASE_DIR
 
+    app_root = Path(__file__).resolve().parents[3]
+    exe_dir = Path(sys.executable).parent
+
     candidate_asset_dirs = [
         os.path.join(os.path.dirname(whisper.__file__), "assets"),
-        os.path.join(str(BASE_DIR), "models", "whisper", "assets"),
-        os.path.join(str(BASE_DIR), "..", "models", "whisper", "assets"),
-        os.path.join(str(BASE_DIR), "_internal", "whisper", "assets"),
-        os.path.join(str(BASE_DIR), "whisper", "assets"),
+        str(BASE_DIR / "models" / "whisper" / "assets"),
+        str(BASE_DIR / "_internal" / "whisper" / "assets"),
+        str(BASE_DIR / "whisper" / "assets"),
+        str(exe_dir / "models" / "whisper" / "assets"),
+        str(exe_dir / "_internal" / "whisper" / "assets"),
+        str(app_root / "models" / "whisper" / "assets"),
+        str(app_root / "dist" / "MK-Subtitle-Studio" / "_internal" / "whisper" / "assets"),
+        str(app_root / "dist" / "MK-Subtitle-Studio" / "models" / "whisper" / "assets"),
+        r"D:\Coding\mk_subtitle\models\whisper\assets",
+        r"D:\Coding\mk_subtitle\dist\MK-Subtitle-Studio\_internal\whisper\assets",
+        r"C:\Users\Makara-Network\AppData\Local\Programs\Python\Python313\Lib\site-packages\whisper\assets",
+        r"C:\Users\Makara-Network\AppData\Local\Python\bin\Lib\site-packages\whisper\assets",
         os.path.join(getattr(sys, "_MEIPASS", ""), "whisper", "assets"),
         os.path.join(getattr(sys, "_MEIPASS", ""), "_internal", "whisper", "assets"),
-        os.path.join(str(Path(sys.executable).parent), "models", "whisper", "assets"),
-        os.path.join(str(Path(__file__).resolve().parents[3]), "models", "whisper", "assets"),
-        os.path.join(str(Path.cwd()), "models", "whisper", "assets"),
     ]
 
     try:
@@ -213,7 +260,9 @@ def _ensure_whisper_assets_patched():
     if valid_asset_dir:
         target_dirs = [
             os.path.join(os.path.dirname(whisper.__file__), "assets"),
-            os.path.join(str(BASE_DIR), "_internal", "whisper", "assets")
+            str(BASE_DIR / "_internal" / "whisper" / "assets"),
+            str(exe_dir / "_internal" / "whisper" / "assets"),
+            str(BASE_DIR / "models" / "whisper" / "assets"),
         ]
         for target_dir in target_dirs:
             try:
@@ -239,8 +288,12 @@ def _ensure_whisper_assets_patched():
             search_dirs = [valid_asset_dir] if valid_asset_dir else []
             search_dirs.extend([
                 os.path.join(os.path.dirname(whisper.__file__), "assets"),
-                os.path.join(str(BASE_DIR), "models", "whisper", "assets"),
-                os.path.join(str(BASE_DIR), "_internal", "whisper", "assets"),
+                str(BASE_DIR / "models" / "whisper" / "assets"),
+                str(BASE_DIR / "_internal" / "whisper" / "assets"),
+                str(exe_dir / "_internal" / "whisper" / "assets"),
+                r"D:\Coding\mk_subtitle\models\whisper\assets",
+                r"D:\Coding\mk_subtitle\dist\MK-Subtitle-Studio\_internal\whisper\assets",
+                r"C:\Users\Makara-Network\AppData\Local\Programs\Python\Python313\Lib\site-packages\whisper\assets",
             ])
             for d in search_dirs:
                 if d and os.path.exists(d):
@@ -266,17 +319,26 @@ def _ensure_whisper_assets_patched():
             search_dirs = [valid_asset_dir] if valid_asset_dir else []
             search_dirs.extend([
                 os.path.join(os.path.dirname(whisper.__file__), "assets"),
-                os.path.join(str(BASE_DIR), "models", "whisper", "assets"),
-                os.path.join(str(BASE_DIR), "..", "models", "whisper", "assets"),
-                os.path.join(str(BASE_DIR), "_internal", "whisper", "assets"),
-                os.path.join(str(Path(sys.executable).parent), "models", "whisper", "assets"),
-                os.path.join(str(Path(__file__).resolve().parents[3]), "models", "whisper", "assets"),
-                os.path.join(str(Path.cwd()), "models", "whisper", "assets"),
+                str(BASE_DIR / "models" / "whisper" / "assets"),
+                str(BASE_DIR / "..", "models", "whisper", "assets"),
+                str(BASE_DIR / "_internal" / "whisper" / "assets"),
+                str(exe_dir / "_internal" / "whisper" / "assets"),
+                r"D:\Coding\mk_subtitle\models\whisper\assets",
+                r"D:\Coding\mk_subtitle\dist\MK-Subtitle-Studio\_internal\whisper\assets",
+                r"C:\Users\Makara-Network\AppData\Local\Programs\Python\Python313\Lib\site-packages\whisper\assets",
             ])
             for d in search_dirs:
                 if d and os.path.exists(d):
                     vocab_path = os.path.join(d, f"{name}.tiktoken")
                     if os.path.exists(vocab_path):
+                        try:
+                            wh_target = os.path.join(os.path.dirname(whisper.__file__), "assets", f"{name}.tiktoken")
+                            if not os.path.exists(wh_target):
+                                os.makedirs(os.path.dirname(wh_target), exist_ok=True)
+                                shutil.copy2(vocab_path, wh_target)
+                        except Exception:
+                            pass
+
                         import base64, tiktoken
                         from whisper.tokenizer import LANGUAGES
                         ranks = {
@@ -307,7 +369,11 @@ def _ensure_whisper_assets_patched():
                             mergeable_ranks=ranks,
                             special_tokens=special_tokens,
                         )
-            raise
+            try:
+                import tiktoken
+                return tiktoken.get_encoding("cl100k_base" if name != "gpt2" else "gpt2")
+            except Exception:
+                raise
 
     whisper.tokenizer.get_encoding = robust_get_encoding
 
@@ -317,7 +383,8 @@ _FASTER_WHISPER_MODELS = {}
 def _patch_av_open():
     """Patches av.open to gracefully handle PyAV 19+ metadata_errors keyword removal"""
     try:
-        import av
+        import importlib
+        av = importlib.import_module("av")
         if not getattr(av, "_mk_patched", False):
             orig_av_open = av.open
             def robust_av_open(*args, **kwargs):
@@ -343,27 +410,40 @@ def run_faster_whisper_transcribe_sync(
     with Silero VAD noise filtering and automatic CUDA / INT8 CPU acceleration).
     """
     _patch_av_open()
-    from faster_whisper import WhisperModel
-    import ctranslate2
+    try:
+        import importlib
+        _fw_module = importlib.import_module("faster_whisper")
+        WhisperModel = getattr(_fw_module, "WhisperModel")
+        ctranslate2 = importlib.import_module("ctranslate2")
+    except (ImportError, ModuleNotFoundError, Exception) as imp_err:
+        print(f"Notice: faster-whisper not installed or failed to import ({imp_err}), falling back to standard Whisper...")
+        return _run_standard_whisper_sync(audio_path, model_size, language)
 
     global _FASTER_WHISPER_MODELS
     chosen_model = model_size if model_size in ["tiny", "base", "small", "medium", "large-v3"] else "base"
 
-    has_cuda = ctranslate2.get_cuda_device_count() > 0
+    try:
+        has_cuda = ctranslate2.get_cuda_device_count() > 0
+    except Exception:
+        has_cuda = False
+
     device = "cuda" if has_cuda else "cpu"
     compute_type = "float16" if has_cuda else "int8"
     cache_key = f"{chosen_model}_{device}_{compute_type}"
 
-    if cache_key not in _FASTER_WHISPER_MODELS:
-        print(f"Loading faster-whisper model '{chosen_model}' on {device} ({compute_type})...")
-        _FASTER_WHISPER_MODELS[cache_key] = WhisperModel(
-            chosen_model,
-            device=device,
-            compute_type=compute_type,
-            cpu_threads=max(1, (os.cpu_count() or 4) - 1)
-        )
-
-    model = _FASTER_WHISPER_MODELS[cache_key]
+    try:
+        if cache_key not in _FASTER_WHISPER_MODELS:
+            print(f"Loading faster-whisper model '{chosen_model}' on {device} ({compute_type})...")
+            _FASTER_WHISPER_MODELS[cache_key] = WhisperModel(
+                chosen_model,
+                device=device,
+                compute_type=compute_type,
+                cpu_threads=max(1, (os.cpu_count() or 4) - 1)
+            )
+        model = _FASTER_WHISPER_MODELS[cache_key]
+    except Exception as model_err:
+        print(f"faster-whisper model load failed ({model_err}), falling back to standard Whisper...")
+        return _run_standard_whisper_sync(audio_path, model_size, language)
 
     # Read extracted audio for voice pitch / gender classification
     full_audio = None
@@ -375,14 +455,18 @@ def run_faster_whisper_transcribe_sync(
         print(f"Warning: could not read audio for gender classification: {e}")
 
     lang_param = None if (not language or language == "auto") else language
-    segments, info = model.transcribe(
-        audio_path,
-        language=lang_param,
-        word_timestamps=True,
-        beam_size=5,
-        vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=500)
-    )
+    try:
+        segments, info = model.transcribe(
+            audio_path,
+            language=lang_param,
+            word_timestamps=True,
+            beam_size=5,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500)
+        )
+    except Exception as tr_err:
+        print(f"Notice: faster-whisper transcribe failed ({tr_err}), falling back to standard Whisper...")
+        return _run_standard_whisper_sync(audio_path, model_size, language)
 
     detected_language = info.language or (language if language and language != "auto" else "auto")
 
@@ -535,6 +619,11 @@ async def transcribe_video_whisper(
     language: Optional[str] = None,
     engine: str = "faster-whisper"
 ):
+    try:
+        _ensure_whisper_assets_patched()
+    except Exception as e:
+        print(f"Notice during whisper assets check: {e}")
+
     video_path = resolve_media_file(video_filename)
 
     temp_wav = AUDIO_CACHE_DIR / f"stt_temp_{uuid.uuid4().hex[:8]}.wav"

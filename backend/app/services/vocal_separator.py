@@ -3,6 +3,7 @@ import sys
 import uuid
 import asyncio
 import subprocess
+import importlib
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 import numpy as np
@@ -27,21 +28,28 @@ def get_vocal_model_path() -> Path:
     raise FileNotFoundError("UVR-MDX-NET-Voc_FT.fp16acc.tflite model file not found.")
 
 def _get_interpreter():
-    """Lazily loads and returns the TFLite interpreter with XNNPACK acceleration"""
+    """Lazily loads and returns the TFLite interpreter with multi-threaded XNNPACK acceleration"""
     global _TFLITE_INTERPRETER, _TFLITE_DETAILS
     if _TFLITE_INTERPRETER is not None:
         return _TFLITE_INTERPRETER, _TFLITE_DETAILS
 
-    try:
-        import ai_edge_litert.interpreter as tflite
-    except ImportError:
+    tflite = None
+    for mod_name in ["ai_edge_litert.interpreter", "tflite_runtime.interpreter", "tensorflow.lite"]:
         try:
-            import tflite_runtime.interpreter as tflite
+            tflite = importlib.import_module(mod_name)
+            break
         except ImportError:
-            import tensorflow.lite as tflite
+            pass
+
+    if tflite is None:
+        raise RuntimeError(
+            "TFLite runtime not found. 'ai-edge-litert' is required for AI vocal removal. "
+            "Please run: pip install ai-edge-litert"
+        )
 
     model_path = get_vocal_model_path()
-    interp = tflite.Interpreter(model_path=str(model_path))
+    threads = max(2, min(os.cpu_count() or 4, 8))
+    interp = tflite.Interpreter(model_path=str(model_path), num_threads=threads)
     interp.allocate_tensors()
     
     in_idx = interp.get_input_details()[0]['index']
@@ -231,11 +239,59 @@ def separate_vocals_sync(
         except Exception:
             pass
 
+def separate_vocals_ffmpeg_fallback(media_path: Path) -> Dict[str, Any]:
+    """
+    Fallback vocal isolation/suppression using FFmpeg phase-cancellation
+    and stereotools center-channel elimination. Works reliably without ML dependencies.
+    """
+    uid = uuid.uuid4().hex[:8]
+    stem_name = Path(media_path).stem
+    inst_filename = f"bgm_clean_{stem_name}_{uid}.mp3"
+    voc_filename = f"vocals_{stem_name}_{uid}.mp3"
+    inst_mp3_path = AUDIO_CACHE_DIR / inst_filename
+    voc_mp3_path = AUDIO_CACHE_DIR / voc_filename
+
+    # Instrumental: subtract center vocal channel (L - R)
+    cmd_inst = [
+        FFMPEG_PATH, "-y",
+        "-i", str(media_path),
+        "-vn",
+        "-af", "stereotools=mlev=0.05,highpass=f=120",
+        "-b:a", "192k",
+        str(inst_mp3_path)
+    ]
+    subprocess.run(cmd_inst, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=SUBPROCESS_FLAGS)
+
+    # Vocals: bandpass and center vocal isolation
+    cmd_voc = [
+        FFMPEG_PATH, "-y",
+        "-i", str(media_path),
+        "-vn",
+        "-af", "stereotools=slev=0.05,bandpass=f=1800:width_type=h:w=3000",
+        "-b:a", "192k",
+        str(voc_mp3_path)
+    ]
+    subprocess.run(cmd_voc, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=SUBPROCESS_FLAGS)
+
+    return {
+        "status": "success",
+        "method": "ffmpeg_phase_isolation",
+        "instrumental_filename": inst_filename,
+        "instrumental_url": f"/api/audio/{inst_filename}",
+        "vocals_filename": voc_filename,
+        "vocals_url": f"/api/audio/{voc_filename}",
+        "duration": 0.0
+    }
+
 async def separate_audio_vocals(
     video_filename: str,
     progress_callback: Optional[Callable[[float, str], None]] = None
 ) -> Dict[str, Any]:
-    """Asynchronous wrapper running CPU/XNNPACK separation in thread pool"""
+    """Asynchronous wrapper running CPU/XNNPACK separation in thread pool with automatic fallback"""
     media_path = resolve_media_file(video_filename)
-    return await asyncio.to_thread(separate_vocals_sync, media_path, progress_callback)
+    try:
+        return await asyncio.to_thread(separate_vocals_sync, media_path, progress_callback)
+    except Exception as e:
+        print(f"[UVR Separation] AI model separation failed ({e}). Falling back to FFmpeg vocal filter...")
+        return await asyncio.to_thread(separate_vocals_ffmpeg_fallback, media_path)
 
