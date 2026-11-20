@@ -183,7 +183,24 @@ def export_ass(
     alignment: int = 2,
     margin_v: Optional[int] = None,
     play_res_x: int = 1920,
-    play_res_y: int = 1080
+    play_res_y: int = 1080,
+    enable_episode_badge: bool = False,
+    episode_badge_text: Optional[str] = None,
+    episode_badge_position: str = "top_left",
+    episode_badge_style: str = "glass_pill",
+    episode_badge_font_size: int = 22,
+    episode_badge_duration: str = "always",
+    enable_text_watermark: bool = False,
+    text_watermark_text: Optional[str] = None,
+    text_watermark_position: str = "top_right",
+    text_watermark_style: str = "shadow",
+    text_watermark_font_size: int = 18,
+    text_watermark_opacity: float = 0.8,
+    text_watermark_color: str = "&H00FFFFFF",
+    watermark_auto_move: bool = False,
+    watermark_move_interval: int = 30,
+    watermark_move_mode: str = "corner_rotate",
+    video_duration: float = 36000.0
 ) -> str:
     # ASS Header with responsive resolution (supports both 16:9 landscape and 9:16 portrait)
     header = f"""[Script Info]
@@ -251,16 +268,138 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 
     # Style definitions
     # ASS Hex colors: &HAABBGGRR (Alpha, Blue, Green, Red)
+    styles = []
     if style_preset == "modern_yellow":
-        style_line = f"Style: Default,{chosen_font},{size_my},{p_col_my},&H000000FF,{o_col_my},&H80000000,-1,0,0,0,100,100,0,0,1,{outline_val},{shadow_val},{actual_align},{margin_lr},{margin_lr},{actual_margin_v},1"
+        styles.append(f"Style: Default,{chosen_font},{size_my},{p_col_my},&H000000FF,{o_col_my},&H80000000,-1,0,0,0,100,100,0,0,1,{outline_val},{shadow_val},{actual_align},{margin_lr},{margin_lr},{actual_margin_v},1")
     elif style_preset == "box_dark":
-        style_line = f"Style: Default,{chosen_font},{size_bd},{p_col_bd},&H000000FF,{o_col_bd},&H90000000,-1,0,0,0,100,100,0,0,3,{max(2, outline_val - 1)},1,{actual_align},{int(margin_lr * 0.75)},{int(margin_lr * 0.75)},{actual_margin_v},1"
+        styles.append(f"Style: Default,{chosen_font},{size_bd},{p_col_bd},&H000000FF,{o_col_bd},&H90000000,-1,0,0,0,100,100,0,0,3,{max(2, outline_val - 1)},1,{actual_align},{int(margin_lr * 0.75)},{int(margin_lr * 0.75)},{actual_margin_v},1")
     elif style_preset == "box_yellow":
-        style_line = f"Style: Default,{chosen_font},{size_by},{p_col_by},&H000000FF,{o_col_by},&H90000000,-1,0,0,0,100,100,0,0,3,{max(2, outline_val - 1)},1,{actual_align},{int(margin_lr * 0.75)},{int(margin_lr * 0.75)},{actual_margin_v},1"
+        styles.append(f"Style: Default,{chosen_font},{size_by},{p_col_by},&H000000FF,{o_col_by},&H90000000,-1,0,0,0,100,100,0,0,3,{max(2, outline_val - 1)},1,{actual_align},{int(margin_lr * 0.75)},{int(margin_lr * 0.75)},{actual_margin_v},1")
     else: # classic_white
-        style_line = f"Style: Default,{chosen_font},{size_cw},{p_col_cw},&H000000FF,{o_col_cw},&H60000000,-1,0,0,0,100,100,0,0,1,{outline_val},{shadow_val},{actual_align},{margin_lr},{margin_lr},{actual_margin_v},1"
+        styles.append(f"Style: Default,{chosen_font},{size_cw},{p_col_cw},&H000000FF,{o_col_cw},&H60000000,-1,0,0,0,100,100,0,0,1,{outline_val},{shadow_val},{actual_align},{margin_lr},{margin_lr},{actual_margin_v},1")
 
-    body = [header, style_line, "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
+    # Tool 5: Dynamic Episode Badge Style Definition
+    if enable_episode_badge and episode_badge_text:
+        badge_align = 7  # default top-left
+        if episode_badge_position == "top_right":
+            badge_align = 9
+        elif episode_badge_position == "top_center":
+            badge_align = 8
+        elif episode_badge_position == "bottom_left":
+            badge_align = 1
+        elif episode_badge_position == "bottom_right":
+            badge_align = 3
+        elif episode_badge_position == "bottom_center":
+            badge_align = 2
+
+        raw_badge_size = episode_badge_font_size if (episode_badge_font_size and episode_badge_font_size > 0) else 22
+        calc_badge_size = int(raw_badge_size * 2.2 * height_scale * portrait_boost)
+        b_margin_lr = int(35 * height_scale)
+        b_margin_v = int(25 * height_scale)
+
+        if episode_badge_style == "cinema_red":
+            # Vivid cinema crimson box with crisp white text
+            styles.append(f"Style: EpisodeBadge,{chosen_font},{calc_badge_size},&H00FFFFFF,&H000000FF,&H001818B8,&H701515B0,-1,0,0,0,100,100,0,0,3,4,1,{badge_align},{b_margin_lr},{b_margin_lr},{b_margin_v},1")
+        elif episode_badge_style == "gold_badge":
+            # Amber gold box with bold dark text
+            styles.append(f"Style: EpisodeBadge,{chosen_font},{calc_badge_size},&H000F172A,&H000000FF,&H0000C8FF,&H5000C8FF,-1,0,0,0,100,100,0,0,3,4,1,{badge_align},{b_margin_lr},{b_margin_lr},{b_margin_v},1")
+        elif episode_badge_style == "dark_box":
+            # Yellow text in high-contrast solid dark container
+            styles.append(f"Style: EpisodeBadge,{chosen_font},{calc_badge_size},&H0000FFFF,&H000000FF,&H00000000,&H85000000,-1,0,0,0,100,100,0,0,3,4,1,{badge_align},{b_margin_lr},{b_margin_lr},{b_margin_v},1")
+        else: # glass_pill
+            # Clean white text in semi-transparent smoked glass pill
+            styles.append(f"Style: EpisodeBadge,{chosen_font},{calc_badge_size},&H00FFFFFF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,3,4,1,{badge_align},{b_margin_lr},{b_margin_lr},{b_margin_v},1")
+
+    # Tool 6: Text Watermark Style Definition
+    if enable_text_watermark and text_watermark_text:
+        raw_wm_size = text_watermark_font_size if (text_watermark_font_size and text_watermark_font_size > 0) else 18
+        calc_wm_size = int(raw_wm_size * 2.2 * height_scale * portrait_boost)
+        wm_margin_lr = int(35 * height_scale)
+        wm_margin_v = int(25 * height_scale)
+
+        # Alpha channel: 00 is opaque, FF is transparent
+        op = max(0.1, min(float(text_watermark_opacity if text_watermark_opacity is not None else 0.8), 1.0))
+        alpha_val = max(0, min(255, int((1.0 - op) * 255)))
+        alpha_hex = f"{alpha_val:02X}"
+
+        # Color handling (convert #FFFFFF to &HAABBGGRR)
+        primary_col = f"&H{alpha_hex}FFFFFF"
+        if text_watermark_color:
+            c = text_watermark_color.strip()
+            if c.startswith("#") and len(c) == 7:
+                r = c[1:3]
+                g = c[3:5]
+                b = c[5:7]
+                primary_col = f"&H{alpha_hex}{b}{g}{r}"
+            elif c.startswith("&H"):
+                primary_col = f"&H{alpha_hex}{c[-6:]}"
+
+        outline_alpha = min(255, alpha_val + 20)
+        box_alpha = min(255, alpha_val + 40)
+
+        if text_watermark_style == "pill":
+            styles.append(f"Style: TextWatermark,{chosen_font},{calc_wm_size},{primary_col},&H000000FF,&H{outline_alpha:02X}000000,&H{box_alpha:02X}000000,-1,0,0,0,100,100,0,0,3,3,1,7,{wm_margin_lr},{wm_margin_lr},{wm_margin_v},1")
+        elif text_watermark_style == "box":
+            styles.append(f"Style: TextWatermark,{chosen_font},{calc_wm_size},{primary_col},&H000000FF,&H00000000,&H{box_alpha:02X}000000,-1,0,0,0,100,100,0,0,3,4,1,7,{wm_margin_lr},{wm_margin_lr},{wm_margin_v},1")
+        else: # shadow (clean broadcast style)
+            styles.append(f"Style: TextWatermark,{chosen_font},{calc_wm_size},{primary_col},&H000000FF,&H{outline_alpha:02X}000000,&H{box_alpha:02X}000000,-1,0,0,0,100,100,0,0,1,2,2,7,{wm_margin_lr},{wm_margin_lr},{wm_margin_v},1")
+
+    style_block = "\n".join(styles)
+    body = [header, style_block, "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
+
+    # Tool 5: Inject Episode Badge Dialogue Event
+    if enable_episode_badge and episode_badge_text:
+        clean_badge_text = episode_badge_text.replace("\n", r"\N").replace("\r", "")
+        if episode_badge_duration == "intro_10s":
+            end_sec = min(float(video_duration) if video_duration else 10.0, 10.0)
+            end_ass = seconds_to_ass_time(end_sec)
+            fade_tag = r"{\fad(350,750)}"
+            body.append(f"Dialogue: 1,0:00:00.00,{end_ass},EpisodeBadge,,0,0,0,,{fade_tag}{clean_badge_text}")
+        else:
+            # Stays on screen for entire video
+            dur = max(float(video_duration) if video_duration else 86400.0, 86400.0)
+            end_ass = seconds_to_ass_time(dur)
+            body.append(f"Dialogue: 1,0:00:00.00,{end_ass},EpisodeBadge,,0,0,0,,{clean_badge_text}")
+
+    # Tool 6: Inject Text Watermark Events (with Auto-Move position support)
+    if enable_text_watermark and text_watermark_text:
+        clean_wm_text = text_watermark_text.replace("\n", r"\N").replace("\r", "")
+        align_map = {"top_left": 7, "top_right": 9, "bottom_left": 1, "bottom_right": 3, "top_center": 8, "bottom_center": 2}
+        init_align = align_map.get(text_watermark_position, 9)
+        dur = max(float(video_duration) if video_duration else 86400.0, 86400.0)
+
+        if not watermark_auto_move:
+            end_ass = seconds_to_ass_time(dur)
+            body.append(f"Dialogue: 2,0:00:00.00,{end_ass},TextWatermark,,0,0,0,,{{\\an{init_align}}}{clean_wm_text}")
+        elif watermark_move_mode == "ghost_flash":
+            step = max(15.0, float(watermark_move_interval or 30))
+            flash_dur = 6.0
+            t = 5.0
+            corner_order = [7, 9, 3, 1]
+            c_idx = 0
+            while t < dur:
+                end_flash = min(dur, t + flash_dur)
+                align = corner_order[c_idx % 4]
+                body.append(f"Dialogue: 2,{seconds_to_ass_time(t)},{seconds_to_ass_time(end_flash)},TextWatermark,,0,0,0,,{{\\an{align}\\fad(600,600)}}{clean_wm_text}")
+                t += step
+                c_idx += 1
+        else:
+            # "corner_rotate": rotates through the 4 corners sequentially with smooth fade
+            step = max(10.0, float(watermark_move_interval or 30))
+            corner_order = [7, 9, 3, 1] # TL, TR, BR, BL
+            try:
+                start_c_idx = corner_order.index(init_align)
+            except ValueError:
+                start_c_idx = 1
+            t = 0.0
+            c_idx = start_c_idx
+            while t < dur:
+                next_t = min(dur, t + step)
+                align = corner_order[c_idx % 4]
+                body.append(f"Dialogue: 2,{seconds_to_ass_time(t)},{seconds_to_ass_time(next_t)},TextWatermark,,0,0,0,,{{\\an{align}\\fad(400,400)}}{clean_wm_text}")
+                t = next_t
+                c_idx += 1
+
     for item in items:
         txt = (item.translated_text if (use_translated and item.translated_text) else item.text) or ""
         escaped_txt = txt.replace("\n", r"\N").replace("\r", "")

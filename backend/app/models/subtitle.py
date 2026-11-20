@@ -122,6 +122,37 @@ class VideoBurnRequest(BaseModel):
     watermark_size: int = 90
     watermark_opacity: float = 0.85
     watermark_margin: int = 20
+
+    # Tool 4: Auto Intro / Outro & Channel Branding
+    enable_intro: bool = False
+    intro_video_path: Optional[str] = None
+    enable_outro: bool = False
+    outro_video_path: Optional[str] = None
+    intro_outro_scope: str = "each"  # "each" or "full_only"
+
+    # Tool 5: Dynamic Episode Header & Badge Overlay
+    enable_episode_badge: bool = False
+    episode_badge_text: Optional[str] = None
+    episode_badge_position: str = "top_left"  # "top_left", "top_right", "top_center", "bottom_left", "bottom_right"
+    episode_badge_style: str = "glass_pill"   # "glass_pill", "cinema_red", "gold_badge", "dark_box"
+    episode_badge_font_size: int = 22
+    episode_badge_duration: str = "always"    # "always" or "intro_10s"
+    episode_badge_start: int = 1
+    episode_badge_total: Optional[int] = None
+    episode_badge_template: Optional[str] = None
+
+    # Tool 6: Text Watermark & Auto-Move Position
+    enable_text_watermark: bool = False
+    text_watermark_text: Optional[str] = None
+    text_watermark_position: str = "top_right"  # "top_right", "top_left", "bottom_right", "bottom_left"
+    text_watermark_style: str = "shadow"        # "shadow", "pill", "box"
+    text_watermark_font_size: int = 18
+    text_watermark_opacity: float = 0.8
+    text_watermark_color: str = "&H00FFFFFF"
+    watermark_auto_move: bool = False            # Auto-move toggle for Text & Logo
+    watermark_move_interval: int = 30            # seconds (15-120s)
+    watermark_move_mode: str = "corner_rotate"   # "corner_rotate" or "ghost_flash"
+
     job_id: Optional[str] = None
     custom_output_filename: Optional[str] = None
 

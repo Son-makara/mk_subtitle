@@ -2,11 +2,14 @@ import os
 import re
 import json
 import uuid
+import logging
 import urllib.parse
 import subprocess
 import threading
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+
+logger = logging.getLogger(__name__)
 
 from ..config import STORAGE_DIR, UPLOADS_DIR, EXPORTS_DIR, AUDIO_CACHE_DIR, FFMPEG_PATH, FFPROBE_PATH, BASE_DIR, SUBPROCESS_FLAGS
 from ..models.subtitle import VideoBurnRequest
@@ -130,20 +133,41 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
     if total_dur <= 0.05:
         total_dur = max_sub_time
 
+    # Derive clean output filename preserving original episode name
+    source_name = req.custom_output_filename or req.video_filename
+    original_stem = sanitize_filename(Path(source_name).stem)
+    if original_stem.startswith("mk_sub_"):
+        original_stem = original_stem.replace("mk_sub_", "")
+
     temp_id = uuid.uuid4().hex[:8]
     temp_ass_path = AUDIO_CACHE_DIR / f"temp_{temp_id}.ass"
 
-    # 1. Generate temp ASS file if subtitles present
+    # 1. Generate temp ASS file if subtitles present or Episode Badge / Text Watermark enabled
     sub_mode = getattr(req, "subtitle_mode", "khmer")
     burn_subs = getattr(req, "burn_subtitles", True) and sub_mode != "none"
-    has_subtitles = bool(req.items) and burn_subs
+    has_episode_badge = bool(getattr(req, "enable_episode_badge", False))
+    has_text_watermark = bool(getattr(req, "enable_text_watermark", False) and getattr(req, "text_watermark_text", None))
+    has_subtitles = (bool(req.items) and burn_subs) or has_episode_badge or has_text_watermark
+
+    badge_text = getattr(req, "episode_badge_text", None)
+    if has_episode_badge:
+        if not badge_text:
+            ep_start = getattr(req, "episode_badge_start", 1) or 1
+            ep_total = getattr(req, "episode_badge_total", None)
+            template = getattr(req, "episode_badge_template", None) or "ភាគទី {ep}"
+            badge_text = template.replace("{ep}", str(ep_start)).replace("{ep_pad}", f"{ep_start:02d}").replace("{title}", original_stem)
+            if ep_total:
+                badge_text = badge_text.replace("{total}", str(ep_total))
+            else:
+                badge_text = badge_text.replace("{total}", "")
+
     if has_subtitles:
         pos = getattr(req, "subtitle_position", "bottom")
         align = 8 if pos == "top" else (5 if pos == "middle" else 2)
         v_offset = getattr(req, "vertical_offset", 55)
         use_translated_flag = (sub_mode == "khmer")
         ass_content = export_ass(
-            items=req.items,
+            items=req.items if burn_subs else [],
             use_translated=use_translated_flag,
             style_preset=req.subtitle_style,
             font_name=req.font_name,
@@ -153,16 +177,27 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
             alignment=align,
             margin_v=v_offset,
             play_res_x=probe.get("width", 1920),
-            play_res_y=probe.get("height", 1080)
+            play_res_y=probe.get("height", 1080),
+            enable_episode_badge=has_episode_badge,
+            episode_badge_text=badge_text,
+            episode_badge_position=getattr(req, "episode_badge_position", "top_left") or "top_left",
+            episode_badge_style=getattr(req, "episode_badge_style", "glass_pill") or "glass_pill",
+            episode_badge_font_size=getattr(req, "episode_badge_font_size", 22) or 22,
+            episode_badge_duration=getattr(req, "episode_badge_duration", "always") or "always",
+            enable_text_watermark=has_text_watermark,
+            text_watermark_text=getattr(req, "text_watermark_text", None),
+            text_watermark_position=getattr(req, "text_watermark_position", "top_right") or "top_right",
+            text_watermark_style=getattr(req, "text_watermark_style", "shadow") or "shadow",
+            text_watermark_font_size=getattr(req, "text_watermark_font_size", 18) or 18,
+            text_watermark_opacity=getattr(req, "text_watermark_opacity", 0.8) if getattr(req, "text_watermark_opacity", None) is not None else 0.8,
+            text_watermark_color=getattr(req, "text_watermark_color", "&H00FFFFFF") or "&H00FFFFFF",
+            watermark_auto_move=bool(getattr(req, "watermark_auto_move", False)),
+            watermark_move_interval=int(getattr(req, "watermark_move_interval", 30) or 30),
+            watermark_move_mode=getattr(req, "watermark_move_mode", "corner_rotate") or "corner_rotate",
+            video_duration=total_dur
         )
         with open(temp_ass_path, "w", encoding="utf-8") as f:
             f.write(ass_content)
-
-    # Derive clean output filename preserving original episode name
-    source_name = req.custom_output_filename or req.video_filename
-    original_stem = sanitize_filename(Path(source_name).stem)
-    if original_stem.startswith("mk_sub_"):
-        original_stem = original_stem.replace("mk_sub_", "")
 
     target_export_filename = f"{original_stem}_dubbed.mp4"
     export_path = EXPORTS_DIR / target_export_filename
@@ -347,17 +382,22 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
         wm_margin = max(0, min(getattr(req, "watermark_margin", 20) or 20, 200))
         wm_pos = getattr(req, "watermark_position", "top_right") or "top_right"
 
-        # Map position to FFmpeg overlay coordinate formula
-        if wm_pos == "top_left":
-            overlay_coord = f"{wm_margin}:{wm_margin}"
-        elif wm_pos == "bottom_right":
-            overlay_coord = f"W-w-{wm_margin}:H-h-{wm_margin}"
-        elif wm_pos == "bottom_left":
-            overlay_coord = f"{wm_margin}:H-h-{wm_margin}"
-        elif wm_pos == "center":
-            overlay_coord = f"(W-w)/2:(H-h)/2"
-        else:  # top_right (default)
-            overlay_coord = f"W-w-{wm_margin}:{wm_margin}"
+        # Map position to FFmpeg overlay coordinate formula (with auto-move corner rotation support)
+        if getattr(req, "watermark_auto_move", False):
+            move_sec = max(10, getattr(req, "watermark_move_interval", 30) or 30)
+            # Cycle every move_sec seconds through 4 corners: 0=TL, 1=TR, 2=BR, 3=BL
+            overlay_coord = f"if(eq(mod(floor(t/{move_sec})\\,4)\\,0)\\,{wm_margin}\\,if(eq(mod(floor(t/{move_sec})\\,4)\\,1)\\,W-w-{wm_margin}\\,if(eq(mod(floor(t/{move_sec})\\,4)\\,2)\\,W-w-{wm_margin}\\,{wm_margin}))):if(eq(mod(floor(t/{move_sec})\\,4)\\,0)\\,{wm_margin}\\,if(eq(mod(floor(t/{move_sec})\\,4)\\,1)\\,{wm_margin}\\,if(eq(mod(floor(t/{move_sec})\\,4)\\,2)\\,H-h-{wm_margin}\\,H-h-{wm_margin})))"
+        else:
+            if wm_pos == "top_left":
+                overlay_coord = f"{wm_margin}:{wm_margin}"
+            elif wm_pos == "bottom_right":
+                overlay_coord = f"W-w-{wm_margin}:H-h-{wm_margin}"
+            elif wm_pos == "bottom_left":
+                overlay_coord = f"{wm_margin}:H-h-{wm_margin}"
+            elif wm_pos == "center":
+                overlay_coord = f"(W-w)/2:(H-h)/2"
+            else:  # top_right (default)
+                overlay_coord = f"W-w-{wm_margin}:{wm_margin}"
 
         # Scale and adjust opacity using colorchannelmixer
         if wm_opacity < 0.99:
@@ -598,6 +638,57 @@ def render_and_burn_video(req: VideoBurnRequest) -> str:
                     RENDER_PROGRESS[req.job_id]["status"] = "failed"
                     RENDER_PROGRESS[req.job_id]["error"] = err_out[-400:]
                 raise RuntimeError(f"FFmpeg render failed: {err_out[-600:]}")
+
+        # Tool 4: Auto Intro / Outro & Sponsor Appender
+        enable_intro = getattr(req, "enable_intro", False)
+        intro_path = getattr(req, "intro_video_path", None)
+        enable_outro = getattr(req, "enable_outro", False)
+        outro_path = getattr(req, "outro_video_path", None)
+
+        intro_resolved = None
+        outro_resolved = None
+        if enable_intro and intro_path:
+            try:
+                intro_resolved = resolve_video_file(intro_path)
+            except Exception as e:
+                logger.warning(f"Could not resolve intro video '{intro_path}': {e}")
+
+        if enable_outro and outro_path:
+            try:
+                outro_resolved = resolve_video_file(outro_path)
+            except Exception as e:
+                logger.warning(f"Could not resolve outro video '{outro_path}': {e}")
+
+        if (intro_resolved or outro_resolved) and export_path.exists():
+            if req.job_id:
+                RENDER_PROGRESS[req.job_id]["message"] = "Attaching Intro/Outro branding..."
+            
+            temp_intermediate = export_path.with_name(f"temp_body_{uuid.uuid4().hex[:6]}_{export_path.name}")
+            try:
+                export_path.rename(temp_intermediate)
+                stitch_list = []
+                if intro_resolved:
+                    stitch_list.append(str(intro_resolved))
+                stitch_list.append(str(temp_intermediate))
+                if outro_resolved:
+                    stitch_list.append(str(outro_resolved))
+                
+                concat_videos(
+                    video_filenames=stitch_list,
+                    custom_output_filename=export_filename,
+                    job_id=None
+                )
+            except Exception as err:
+                logger.error(f"Failed to stitch intro/outro: {err}")
+                # Restore original if possible
+                if temp_intermediate.exists() and not export_path.exists():
+                    temp_intermediate.rename(export_path)
+            finally:
+                if temp_intermediate.exists():
+                    try:
+                        temp_intermediate.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
         if req.job_id:
             RENDER_PROGRESS[req.job_id]["progress"] = 100

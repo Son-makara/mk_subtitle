@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, Image as ImageIcon, Layers, ArrowUp, ArrowDown, Plus, Film, Loader2, FolderOpen, Play, Pause, Volume2, VolumeX, CheckCircle2, Shield, EyeOff, Music, Sparkles, Move, Square, Circle, Scissors, Clock, RefreshCw, ArrowUpDown, FlipHorizontal, FlipVertical, RotateCw } from 'lucide-react';
+import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, Image as ImageIcon, Layers, ArrowUp, ArrowDown, Plus, Film, Loader2, FolderOpen, Play, Pause, Volume2, VolumeX, CheckCircle2, Shield, EyeOff, Music, Sparkles, Move, Square, Circle, Scissors, Clock, RefreshCw, ArrowUpDown, FlipHorizontal, FlipVertical, RotateCw, Bookmark, Clapperboard, Video, Tag } from 'lucide-react';
 
 export default function ExportModal({
   isOpen,
@@ -973,6 +973,93 @@ export default function ExportModal({
   const [rotateAngle, setRotateAngle] = useState(0); // 0, 90, 180, 270
   const [isQuickMirroring, setIsQuickMirroring] = useState(false);
   const [quickMirrorResult, setQuickMirrorResult] = useState(null);
+
+  // Tool 4: Auto Intro / Outro & Sponsor Appender
+  const [enableIntro, setEnableIntro] = useState(false);
+  const [introVideoPath, setIntroVideoPath] = useState('');
+  const [introVideoName, setIntroVideoName] = useState('');
+  const [isUploadingIntro, setIsUploadingIntro] = useState(false);
+  const [enableOutro, setEnableOutro] = useState(false);
+  const [outroVideoPath, setOutroVideoPath] = useState('');
+  const [outroVideoName, setOutroVideoName] = useState('');
+  const [isUploadingOutro, setIsUploadingOutro] = useState(false);
+  const [introOutroScope, setIntroOutroScope] = useState('each'); // 'each' or 'full_only'
+  const introFileInputRef = useRef(null);
+  const outroFileInputRef = useRef(null);
+
+  // Tool 5: Dynamic Episode Header & Badge Overlay
+  const [enableEpisodeBadge, setEnableEpisodeBadge] = useState(false);
+  const [episodeBadgeTemplate, setEpisodeBadgeTemplate] = useState('ភាគទី {ep}');
+  const [episodeBadgeStart, setEpisodeBadgeStart] = useState(1);
+  const [episodeBadgePosition, setEpisodeBadgePosition] = useState('top_left'); // 'top_left', 'top_right', 'top_center', 'bottom_left', 'bottom_right'
+  const [episodeBadgeStyle, setEpisodeBadgeStyle] = useState('glass_pill'); // 'glass_pill', 'cinema_red', 'gold_badge', 'dark_box'
+  const [episodeBadgeFontSize, setEpisodeBadgeFontSize] = useState(22);
+  const [episodeBadgeDuration, setEpisodeBadgeDuration] = useState('always'); // 'always' or 'intro_10s'
+
+  // Tool 6: Text Watermark & Auto-Move Position
+  const [enableTextWatermark, setEnableTextWatermark] = useState(false);
+  const [textWatermarkText, setTextWatermarkText] = useState('@MKMovie');
+  const [textWatermarkPosition, setTextWatermarkPosition] = useState('top_right'); // 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left'
+  const [textWatermarkStyle, setTextWatermarkStyle] = useState('shadow'); // 'shadow' | 'pill' | 'box'
+  const [textWatermarkFontSize, setTextWatermarkFontSize] = useState(18); // 12 - 36px
+  const [textWatermarkOpacity, setTextWatermarkOpacity] = useState(80); // 10 - 100%
+  const [textWatermarkColor, setTextWatermarkColor] = useState('#ffffff');
+  const [watermarkAutoMove, setWatermarkAutoMove] = useState(false);
+  const [watermarkMoveInterval, setWatermarkMoveInterval] = useState(30); // 15, 30, 45, 60
+  const [watermarkMoveMode, setWatermarkMoveMode] = useState('corner_rotate'); // 'corner_rotate' | 'ghost_flash'
+
+  const previewBadgeText = useMemo(() => {
+    if (!enableEpisodeBadge) return '';
+    const epNum = episodeBadgeStart || 1;
+    const totalNum = (queue && queue.length > 0) ? queue.length : 1;
+    const currentVid = (queue && queue[selectedQueueIndex]?.name) || 'Movie_Series';
+    const cleanTitle = currentVid.replace(/\.[^/.]+$/, '').replace(/_dubbed$/, '').replace(/^mk_sub_/, '');
+    return (episodeBadgeTemplate || 'ភាគទី {ep}')
+      .replace(/{ep}/g, epNum)
+      .replace(/{ep_pad}/g, String(epNum).padStart(2, '0'))
+      .replace(/{total}/g, totalNum)
+      .replace(/{title}/g, cleanTitle);
+  }, [enableEpisodeBadge, episodeBadgeStart, queue, selectedQueueIndex, episodeBadgeTemplate]);
+
+  const handleIntroFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIntroVideoName(file.name);
+    setIsUploadingIntro(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/upload/video', { method: 'POST', body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        setIntroVideoPath(data.filename || data.path || file.name);
+      }
+    } catch (err) {
+      console.warn('Could not upload intro video:', err);
+    } finally {
+      setIsUploadingIntro(false);
+    }
+  };
+
+  const handleOutroFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setOutroVideoName(file.name);
+    setIsUploadingOutro(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/upload/video', { method: 'POST', body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        setOutroVideoPath(data.filename || data.path || file.name);
+      }
+    } catch (err) {
+      console.warn('Could not upload outro video:', err);
+    } finally {
+      setIsUploadingOutro(false);
+    }
+  };
 
   // 7. Endless BGM Auto-Crossfader & Cinematic Fader
   const [bgmCrossfade, setBgmCrossfade] = useState(true);
@@ -3045,6 +3132,86 @@ export default function ExportModal({
                       </div>
                     )}
 
+                    {/* Tool 5: Dynamic Episode Header Badge Live Preview */}
+                    {enableEpisodeBadge && previewBadgeText && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          ...(episodeBadgePosition === 'top_left'
+                            ? { top: '12px', left: '12px' }
+                            : episodeBadgePosition === 'top_right'
+                            ? { top: '12px', right: '12px' }
+                            : episodeBadgePosition === 'top_center'
+                            ? { top: '12px', left: '50%', transform: 'translateX(-50%)' }
+                            : episodeBadgePosition === 'bottom_left'
+                            ? { bottom: '48px', left: '12px' }
+                            : episodeBadgePosition === 'bottom_center'
+                            ? { bottom: '48px', left: '50%', transform: 'translateX(-50%)' }
+                            : { bottom: '48px', right: '12px' }),
+                          zIndex: 6,
+                          pointerEvents: 'none',
+                          padding: '3px 10px',
+                          borderRadius: episodeBadgeStyle === 'glass_pill' ? '20px' : '4px',
+                          fontSize: `${Math.max(10, Math.round(episodeBadgeFontSize * 0.55))}px`,
+                          fontWeight: 700,
+                          fontFamily: 'Kantumruy, "Kantumruy Pro", sans-serif',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                          ...(episodeBadgeStyle === 'cinema_red'
+                            ? { backgroundColor: 'rgba(185, 28, 28, 0.92)', color: '#ffffff', border: '1px solid #ef4444' }
+                            : episodeBadgeStyle === 'gold_badge'
+                            ? { backgroundColor: '#f59e0b', color: '#0f172a', border: '1px solid #fbbf24' }
+                            : episodeBadgeStyle === 'dark_box'
+                            ? { backgroundColor: 'rgba(0, 0, 0, 0.88)', color: '#facc15', border: '1px solid rgba(250, 204, 21, 0.5)' }
+                            : { backgroundColor: 'rgba(15, 23, 42, 0.8)', color: '#ffffff', backdropFilter: 'blur(8px)', border: '1px solid rgba(255, 255, 255, 0.25)' })
+                        }}
+                      >
+                        <Bookmark size={11} style={{ opacity: 0.85 }} />
+                        <span>{previewBadgeText}</span>
+                      </div>
+                    )}
+
+                    {/* Tool 6: Text Watermark Live Preview */}
+                    {enableTextWatermark && textWatermarkText && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          ...(textWatermarkPosition === 'top_left'
+                            ? { top: `${Math.round(watermarkMargin * 0.5)}px`, left: `${Math.round(watermarkMargin * 0.5)}px` }
+                            : textWatermarkPosition === 'bottom_left'
+                            ? { bottom: `${Math.round(watermarkMargin * 0.5 + 40)}px`, left: `${Math.round(watermarkMargin * 0.5)}px` }
+                            : textWatermarkPosition === 'bottom_right'
+                            ? { bottom: `${Math.round(watermarkMargin * 0.5 + 40)}px`, right: `${Math.round(watermarkMargin * 0.5)}px` }
+                            : { top: `${Math.round(watermarkMargin * 0.5)}px`, right: `${Math.round(watermarkMargin * 0.5)}px` }),
+                          opacity: textWatermarkOpacity / 100,
+                          zIndex: 6,
+                          pointerEvents: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: textWatermarkStyle === 'pill' ? '2px 8px' : textWatermarkStyle === 'box' ? '3px 6px' : '0',
+                          borderRadius: textWatermarkStyle === 'pill' ? '12px' : '3px',
+                          backgroundColor: textWatermarkStyle === 'pill' ? 'rgba(0,0,0,0.6)' : textWatermarkStyle === 'box' ? 'rgba(0,0,0,0.85)' : 'transparent',
+                          fontSize: `${Math.max(10, Math.round(textWatermarkFontSize * 0.65))}px`,
+                          fontWeight: 700,
+                          color: textWatermarkColor,
+                          fontFamily: 'Kantumruy, "Kantumruy Pro", sans-serif',
+                          textShadow: textWatermarkStyle === 'shadow' ? '1px 1px 3px rgba(0,0,0,0.95), 0 0 2px rgba(0,0,0,0.85)' : 'none',
+                          border: textWatermarkStyle === 'pill' ? '1px solid rgba(255,255,255,0.2)' : 'none'
+                        }}
+                      >
+                        <Tag size={10} style={{ opacity: 0.8 }} />
+                        <span>{textWatermarkText}</span>
+                        {watermarkAutoMove && (
+                          <span style={{ fontSize: '8px', color: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.25)', padding: '1px 4px', borderRadius: '3px', fontWeight: 700 }}>
+                            🔄 {watermarkMoveInterval}s
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {/* Subtitle Text Display */}
                     {subtitleMode === 'none' ? (
                       <div
@@ -3898,6 +4065,220 @@ export default function ExportModal({
                     )}
                   </div>
 
+                  {/* Tool 6: Text Watermark & Channel Handle */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableTextWatermark}
+                        onChange={(e) => setEnableTextWatermark(e.target.checked)}
+                        style={{ accentColor: '#38bdf8', width: '14px', height: '14px' }}
+                      />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: enableTextWatermark ? 600 : 400 }}>
+                        <Type size={15} style={{ color: '#38bdf8' }} />
+                        Add Text Watermark & Channel Handle (ស្លាកអក្សរលើវីដេអូ)
+                      </span>
+                    </label>
+
+                    {enableTextWatermark && (
+                      <div
+                        style={{
+                          backgroundColor: 'var(--bg-base)',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px'
+                        }}
+                      >
+                        {/* Text input and quick presets */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Watermark Text / Channel Link:</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {[
+                                { text: '@MKMovie', label: '@MKMovie' },
+                                { text: 'Fb: MK Movie', label: '📘 Facebook' },
+                                { text: 'Telegram: @mkmovie', label: '✈️ Telegram' },
+                                { text: 'រក្សាសិទ្ធិដោយ MK Movie', label: '🇰🇭 Copyright' }
+                              ].map((p, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => setTextWatermarkText(p.text)}
+                                  style={{
+                                    padding: '1px 5px',
+                                    fontSize: '9px',
+                                    borderRadius: '3px',
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    color: '#38bdf8',
+                                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {p.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <input
+                            type="text"
+                            value={textWatermarkText}
+                            onChange={(e) => setTextWatermarkText(e.target.value)}
+                            placeholder="e.g. 📘 Fb: MK Movie | ✈️ @mkmovie"
+                            style={{
+                              padding: '7px 10px',
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: '#fff',
+                              border: '1px solid var(--border-color)',
+                              fontSize: '12px',
+                              outline: 'none'
+                            }}
+                          />
+                        </div>
+
+                        {/* Controls Row: Position, Style, Font Size, Opacity */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                          <div>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Position:</span>
+                            <select
+                              value={textWatermarkPosition}
+                              onChange={(e) => setTextWatermarkPosition(e.target.value)}
+                              style={{ width: '100%', padding: '4px 6px', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '11px' }}
+                            >
+                              <option value="top_right">Top-Right ↗</option>
+                              <option value="top_left">Top-Left ↖</option>
+                              <option value="bottom_right">Bottom-Right ↘</option>
+                              <option value="bottom_left">Bottom-Left ↙</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Style:</span>
+                            <select
+                              value={textWatermarkStyle}
+                              onChange={(e) => setTextWatermarkStyle(e.target.value)}
+                              style={{ width: '100%', padding: '4px 6px', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '11px' }}
+                            >
+                              <option value="shadow">Clean Shadow</option>
+                              <option value="pill">Glass Pill</option>
+                              <option value="box">Solid Box</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Size:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{textWatermarkFontSize}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="12"
+                              max="32"
+                              value={textWatermarkFontSize}
+                              onChange={(e) => setTextWatermarkFontSize(parseInt(e.target.value))}
+                              style={{ width: '100%', accentColor: '#38bdf8', cursor: 'pointer' }}
+                            />
+                          </div>
+
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                              <span>Opacity:</span>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>{textWatermarkOpacity}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="20"
+                              max="100"
+                              step="5"
+                              value={textWatermarkOpacity}
+                              onChange={(e) => setTextWatermarkOpacity(parseInt(e.target.value))}
+                              style={{ width: '100%', accentColor: '#38bdf8', cursor: 'pointer' }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Watermark Auto-Move Position (Anti-Cropping & Anti-Theft) */}
+                  {(addLogoWatermark || enableTextWatermark) && (
+                    <div
+                      style={{
+                        backgroundColor: watermarkAutoMove ? 'rgba(56, 189, 248, 0.08)' : 'var(--bg-base)',
+                        border: watermarkAutoMove ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid var(--border-color)',
+                        borderRadius: '10px',
+                        padding: '10px 12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, color: watermarkAutoMove ? '#38bdf8' : 'var(--text-bright)', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={watermarkAutoMove}
+                            onChange={(e) => setWatermarkAutoMove(e.target.checked)}
+                            style={{ accentColor: '#38bdf8', width: '14px', height: '14px' }}
+                          />
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <RefreshCw size={14} className={watermarkAutoMove ? 'animate-spin' : ''} style={{ color: '#38bdf8' }} />
+                            🔄 Auto-Move Watermark Position (Anti-Cropping / Anti-Theft)
+                          </span>
+                        </label>
+
+                        {watermarkAutoMove && (
+                          <span style={{ fontSize: '10px', backgroundColor: '#0284c7', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                            Active ({watermarkMoveInterval}s)
+                          </span>
+                        )}
+                      </div>
+
+                      {watermarkAutoMove && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px' }}>
+                          <div style={{ fontSize: '11px', color: '#7dd3fc', backgroundColor: 'rgba(56, 189, 248, 0.1)', padding: '6px 10px', borderRadius: '6px' }}>
+                            🛡️ Automatically shifts watermark position across the 4 corners every {watermarkMoveInterval}s so thieves cannot crop or cover your branding.
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
+                            <div>
+                              <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Movement Mode:</span>
+                              <select
+                                value={watermarkMoveMode}
+                                onChange={(e) => setWatermarkMoveMode(e.target.value)}
+                                style={{ width: '100%', padding: '4px 6px', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '11px' }}
+                              >
+                                <option value="corner_rotate">Corner Rotation (TL ➔ TR ➔ BR ➔ BL)</option>
+                                <option value="ghost_flash">Ghost Flash (Fade in for 6s)</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                                <span>Move Interval:</span>
+                                <span style={{ color: '#fff', fontWeight: 600 }}>Every {watermarkMoveInterval} sec</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="15"
+                                max="90"
+                                step="5"
+                                value={watermarkMoveInterval}
+                                onChange={(e) => setWatermarkMoveInterval(parseInt(e.target.value))}
+                                style={{ width: '100%', accentColor: '#38bdf8', cursor: 'pointer' }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Tool 1: Delogo / Subtitle Cover Strip */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
@@ -4457,6 +4838,353 @@ export default function ExportModal({
                     </div>
                   </div>
 
+                  {/* Tool 4: Auto Intro / Outro & Channel Branding */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableIntro || enableOutro}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setEnableIntro(val);
+                          setEnableOutro(val);
+                        }}
+                        style={{ accentColor: '#ec4899', width: '14px', height: '14px' }}
+                      />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: (enableIntro || enableOutro) ? 600 : 400 }}>
+                        <Clapperboard size={15} style={{ color: '#ec4899' }} />
+                        Channel Intro & Outro Stamping (បញ្ចូល Intro / Outro ស្វ័យប្រវត្តិ)
+                      </span>
+                    </label>
+
+                    {(enableIntro || enableOutro) && (
+                      <div
+                        style={{
+                          backgroundColor: 'var(--bg-base)',
+                          border: '1px solid rgba(236, 72, 153, 0.35)',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '12px'
+                        }}
+                      >
+                        <div style={{ fontSize: '11px', color: '#fbcfe8', backgroundColor: 'rgba(236, 72, 153, 0.1)', padding: '6px 10px', borderRadius: '6px' }}>
+                          🎬 Automatically attach your channel intro clip before the video begins and outro / follow card at the end.
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          {/* Intro Box */}
+                          <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text-bright)', cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={enableIntro}
+                                  onChange={(e) => setEnableIntro(e.target.checked)}
+                                  style={{ accentColor: '#ec4899' }}
+                                />
+                                <span>▶️ Intro Video (Start)</span>
+                              </label>
+                              {introVideoName && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setIntroVideoPath(''); setIntroVideoName(''); }}
+                                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                                  title="Clear intro"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+
+                            {enableIntro && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => introFileInputRef.current && introFileInputRef.current.click()}
+                                  disabled={isUploadingIntro}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    backgroundColor: introVideoPath ? 'rgba(236, 72, 153, 0.15)' : 'var(--bg-base)',
+                                    color: introVideoPath ? '#f472b6' : 'var(--text-bright)',
+                                    border: introVideoPath ? '1px solid #ec4899' : '1px solid var(--border-color)',
+                                    fontSize: '11px',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px'
+                                  }}
+                                >
+                                  {isUploadingIntro ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '170px' }}>
+                                    {isUploadingIntro ? 'Uploading...' : (introVideoName || 'Select Intro Video (.mp4)')}
+                                  </span>
+                                </button>
+                                <input
+                                  ref={introFileInputRef}
+                                  type="file"
+                                  accept="video/*"
+                                  style={{ display: 'none' }}
+                                  onChange={handleIntroFileSelect}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Outro Box */}
+                          <div style={{ backgroundColor: 'var(--bg-tertiary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text-bright)', cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={enableOutro}
+                                  onChange={(e) => setEnableOutro(e.target.checked)}
+                                  style={{ accentColor: '#ec4899' }}
+                                />
+                                <span>⏹️ Outro Video (End)</span>
+                              </label>
+                              {outroVideoName && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setOutroVideoPath(''); setOutroVideoName(''); }}
+                                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                                  title="Clear outro"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+
+                            {enableOutro && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => outroFileInputRef.current && outroFileInputRef.current.click()}
+                                  disabled={isUploadingOutro}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    backgroundColor: outroVideoPath ? 'rgba(236, 72, 153, 0.15)' : 'var(--bg-base)',
+                                    color: outroVideoPath ? '#f472b6' : 'var(--text-bright)',
+                                    border: outroVideoPath ? '1px solid #ec4899' : '1px solid var(--border-color)',
+                                    fontSize: '11px',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px'
+                                  }}
+                                >
+                                  {isUploadingOutro ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '170px' }}>
+                                    {isUploadingOutro ? 'Uploading...' : (outroVideoName || 'Select Outro Video (.mp4)')}
+                                  </span>
+                                </button>
+                                <input
+                                  ref={outroFileInputRef}
+                                  type="file"
+                                  accept="video/*"
+                                  style={{ display: 'none' }}
+                                  onChange={handleOutroFileSelect}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Batch Scope Mode */}
+                        {renderScope === 'batch' && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--bg-tertiary)', padding: '8px 12px', borderRadius: '6px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Stitching Scope:</span>
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--text-bright)', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="introOutroScope"
+                                  value="each"
+                                  checked={introOutroScope === 'each'}
+                                  onChange={() => setIntroOutroScope('each')}
+                                  style={{ accentColor: '#ec4899' }}
+                                />
+                                <span>Attach to each episode</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--text-bright)', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="introOutroScope"
+                                  value="full_only"
+                                  checked={introOutroScope === 'full_only'}
+                                  onChange={() => setIntroOutroScope('full_only')}
+                                  style={{ accentColor: '#ec4899' }}
+                                />
+                                <span>Full movie start & end only</span>
+                              </label>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tool 5: Dynamic Episode Header & Badge Overlay */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableEpisodeBadge}
+                        onChange={(e) => setEnableEpisodeBadge(e.target.checked)}
+                        style={{ accentColor: '#6366f1', width: '14px', height: '14px' }}
+                      />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: enableEpisodeBadge ? 600 : 400 }}>
+                        <Bookmark size={15} style={{ color: '#6366f1' }} />
+                        Dynamic Episode Badge (ស្លាកលេខភាគស្វ័យប្រវត្តិ)
+                      </span>
+                    </label>
+
+                    {enableEpisodeBadge && (
+                      <div
+                        style={{
+                          backgroundColor: 'var(--bg-base)',
+                          border: '1px solid rgba(99, 102, 241, 0.4)',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={{ fontSize: '11px', color: '#c7d2fe', backgroundColor: 'rgba(99, 102, 241, 0.1)', padding: '6px 10px', borderRadius: '6px' }}>
+                          🏷️ Automatically overlay an episode counter pill on each video. In Batch Render, numbers auto-increment sequentially ({episodeBadgeStart}, {episodeBadgeStart + 1}, {episodeBadgeStart + 2}...).
+                        </div>
+
+                        {/* Template Input & Variable Pills */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Badge Text Template:</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {[
+                                { tag: '{ep}', label: '{ep}' },
+                                { tag: '{ep_pad}', label: '{ep_pad}' },
+                                { tag: '{total}', label: '{total}' },
+                                { tag: '{title}', label: '{title}' }
+                              ].map((v) => (
+                                <button
+                                  key={v.tag}
+                                  type="button"
+                                  onClick={() => setEpisodeBadgeTemplate((prev) => `${prev} ${v.tag}`)}
+                                  style={{
+                                    padding: '1px 5px',
+                                    fontSize: '9px',
+                                    borderRadius: '3px',
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    color: '#818cf8',
+                                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                                    cursor: 'pointer'
+                                  }}
+                                  title={`Insert ${v.tag}`}
+                                >
+                                  {v.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <input
+                            type="text"
+                            value={episodeBadgeTemplate}
+                            onChange={(e) => setEpisodeBadgeTemplate(e.target.value)}
+                            placeholder="e.g. ភាគទី {ep} | Ep {ep_pad}"
+                            style={{
+                              padding: '7px 10px',
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: '#fff',
+                              border: '1px solid var(--border-color)',
+                              fontSize: '12px',
+                              outline: 'none'
+                            }}
+                          />
+                        </div>
+
+                        {/* Live Preview of formatted badge */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          <span>Sample Display:</span>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: episodeBadgeStyle === 'cinema_red' ? '#991b1b' : episodeBadgeStyle === 'gold_badge' ? '#f59e0b' : episodeBadgeStyle === 'dark_box' ? '#000' : 'rgba(255,255,255,0.15)',
+                            color: episodeBadgeStyle === 'gold_badge' ? '#000' : episodeBadgeStyle === 'dark_box' ? '#facc15' : '#fff',
+                            border: '1px solid rgba(255,255,255,0.2)'
+                          }}>
+                            {previewBadgeText || 'ភាគទី 01'}
+                          </span>
+                        </div>
+
+                        {/* Settings Row: Start Num, Style Preset, Position, Duration */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                          <div>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Start Ep #:</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={episodeBadgeStart}
+                              onChange={(e) => setEpisodeBadgeStart(Math.max(1, parseInt(e.target.value) || 1))}
+                              style={{ width: '100%', padding: '4px 6px', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '11px' }}
+                            />
+                          </div>
+
+                          <div>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Badge Style:</span>
+                            <select
+                              value={episodeBadgeStyle}
+                              onChange={(e) => setEpisodeBadgeStyle(e.target.value)}
+                              style={{ width: '100%', padding: '4px 6px', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '11px' }}
+                            >
+                              <option value="glass_pill">Glass Pill</option>
+                              <option value="cinema_red">Cinema Red</option>
+                              <option value="gold_badge">Amber Gold</option>
+                              <option value="dark_box">Dark Box</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Position:</span>
+                            <select
+                              value={episodeBadgePosition}
+                              onChange={(e) => setEpisodeBadgePosition(e.target.value)}
+                              style={{ width: '100%', padding: '4px 6px', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '11px' }}
+                            >
+                              <option value="top_left">Top-Left</option>
+                              <option value="top_right">Top-Right</option>
+                              <option value="top_center">Top-Center</option>
+                              <option value="bottom_left">Bottom-Left</option>
+                              <option value="bottom_right">Bottom-Right</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Duration:</span>
+                            <select
+                              value={episodeBadgeDuration}
+                              onChange={(e) => setEpisodeBadgeDuration(e.target.value)}
+                              style={{ width: '100%', padding: '4px 6px', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: '#fff', fontSize: '11px' }}
+                            >
+                              <option value="always">Always Visible</option>
+                              <option value="intro_10s">First 10s Only (Fade)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -4517,6 +5245,29 @@ export default function ExportModal({
                         flip_vertical: flipVertical,
                         rotate_angle: rotateAngle,
                         use_amf_gpu: useAmfGpu,
+                        enable_intro: enableIntro,
+                        intro_video_path: introVideoPath || null,
+                        enable_outro: enableOutro,
+                        outro_video_path: outroVideoPath || null,
+                        intro_outro_scope: introOutroScope,
+                        enable_episode_badge: enableEpisodeBadge,
+                        episode_badge_template: episodeBadgeTemplate,
+                        episode_badge_start: parseInt(episodeBadgeStart, 10) || 1,
+                        episode_badge_position: episodeBadgePosition,
+                        episode_badge_style: episodeBadgeStyle,
+                        episode_badge_font_size: parseInt(episodeBadgeFontSize, 10) || 22,
+                        episode_badge_duration: episodeBadgeDuration,
+                        episode_badge_text: previewBadgeText,
+                        enable_text_watermark: enableTextWatermark,
+                        text_watermark_text: textWatermarkText || null,
+                        text_watermark_position: textWatermarkPosition,
+                        text_watermark_style: textWatermarkStyle,
+                        text_watermark_font_size: parseInt(textWatermarkFontSize, 10) || 18,
+                        text_watermark_opacity: (parseFloat(textWatermarkOpacity) || 80) / 100,
+                        text_watermark_color: textWatermarkColor,
+                        watermark_auto_move: watermarkAutoMove,
+                        watermark_move_interval: parseInt(watermarkMoveInterval, 10) || 30,
+                        watermark_move_mode: watermarkMoveMode,
                         combine_into_one: renderScope === 'batch' && batchOutputMode === 'combine',
                         combined_filename: combinedTitle || 'Combined_Full_Movie.mp4',
                         batch_output_mode: batchOutputMode,

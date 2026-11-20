@@ -966,7 +966,32 @@ export default function App() {
         : (parseFloat(subSettings.antiCopyrightSpeed) || 1.03),
       // Subtitle Colors
       primary_color: isCustomObject?.primary_color || ((subSettings.stylePreset === 'modern_yellow' || subSettings.stylePreset === 'box_yellow') ? '&H0000FFFF' : '&H00FFFFFF'),
-      outline_color: isCustomObject?.outline_color || '&H00000000'
+      outline_color: isCustomObject?.outline_color || '&H00000000',
+      // Tool 4: Auto Intro / Outro & Sponsor Appender
+      enable_intro: Boolean(isCustomObject?.enable_intro),
+      intro_video_path: isCustomObject?.intro_video_path || null,
+      enable_outro: Boolean(isCustomObject?.enable_outro),
+      outro_video_path: isCustomObject?.outro_video_path || null,
+      intro_outro_scope: isCustomObject?.intro_outro_scope || 'each',
+      // Tool 5: Dynamic Episode Header Badge
+      enable_episode_badge: Boolean(isCustomObject?.enable_episode_badge),
+      episode_badge_template: isCustomObject?.episode_badge_template || 'ភាគទី {ep}',
+      episode_badge_position: isCustomObject?.episode_badge_position || 'top_left',
+      episode_badge_style: isCustomObject?.episode_badge_style || 'glass_pill',
+      episode_badge_font_size: parseInt(isCustomObject?.episode_badge_font_size, 10) || 22,
+      episode_badge_duration: isCustomObject?.episode_badge_duration || 'always',
+      episode_badge_start: parseInt(isCustomObject?.episode_badge_start, 10) || 1,
+      // Tool 6: Text Watermark & Auto-Move Position
+      enable_text_watermark: Boolean(isCustomObject?.enable_text_watermark),
+      text_watermark_text: isCustomObject?.text_watermark_text || null,
+      text_watermark_position: isCustomObject?.text_watermark_position || 'top_right',
+      text_watermark_style: isCustomObject?.text_watermark_style || 'shadow',
+      text_watermark_font_size: parseInt(isCustomObject?.text_watermark_font_size, 10) || 18,
+      text_watermark_opacity: isCustomObject?.text_watermark_opacity !== undefined ? parseFloat(isCustomObject.text_watermark_opacity) : 0.8,
+      text_watermark_color: isCustomObject?.text_watermark_color || '&H00FFFFFF',
+      watermark_auto_move: Boolean(isCustomObject?.watermark_auto_move),
+      watermark_move_interval: parseInt(isCustomObject?.watermark_move_interval, 10) || 30,
+      watermark_move_mode: isCustomObject?.watermark_move_mode || 'corner_rotate'
     };
 
     if (renderOpts.add_logo_watermark && isCustomObject?.watermark_custom_file && !renderOpts.watermark_custom_path) {
@@ -1097,6 +1122,19 @@ export default function App() {
           } catch (e) { }
         }, 500);
 
+        let itemBadgeText = null;
+        if (renderOpts.enable_episode_badge) {
+          const epNum = (renderOpts.episode_badge_start || 1) + i;
+          const totalNum = itemsToProcess.length;
+          const template = renderOpts.episode_badge_template || 'ភាគទី {ep}';
+          const cleanTitle = (currentItem.name || currentItem.serverFilename || '').replace(/\.[^/.]+$/, '').replace(/^mk_sub_/, '');
+          itemBadgeText = template
+            .replace(/{ep}/g, epNum)
+            .replace(/{ep_pad}/g, String(epNum).padStart(2, '0'))
+            .replace(/{total}/g, totalNum)
+            .replace(/{title}/g, cleanTitle);
+        }
+
         const burnRes = await fetch('/api/render/burn', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1107,7 +1145,12 @@ export default function App() {
             job_id: jobId,
             items: items,
             bgm_filename: cleanBgmFilename || bgmFilename,
-            ...renderOpts
+            ...renderOpts,
+            episode_badge_text: itemBadgeText,
+            episode_badge_start: (renderOpts.episode_badge_start || 1) + i,
+            episode_badge_total: itemsToProcess.length,
+            enable_intro: (renderOpts.intro_outro_scope === 'full_only' && renderOpts.batch_output_mode === 'combine') ? false : renderOpts.enable_intro,
+            enable_outro: (renderOpts.intro_outro_scope === 'full_only' && renderOpts.batch_output_mode === 'combine') ? false : renderOpts.enable_outro
           })
         });
 
@@ -1263,11 +1306,21 @@ export default function App() {
             defaultCombinedName = `${baseName}_Full_Movie.mp4`;
           }
 
+          let finalMergeList = [...renderedOutputFilenames];
+          if (renderOpts.intro_outro_scope === 'full_only') {
+            if (renderOpts.enable_intro && renderOpts.intro_video_path) {
+              finalMergeList.unshift(renderOpts.intro_video_path);
+            }
+            if (renderOpts.enable_outro && renderOpts.outro_video_path) {
+              finalMergeList.push(renderOpts.outro_video_path);
+            }
+          }
+
           const concatRes = await fetch('/api/render/concat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              video_filenames: renderedOutputFilenames,
+              video_filenames: finalMergeList,
               custom_output_filename: defaultCombinedName,
               job_id: concatJobId
             })
