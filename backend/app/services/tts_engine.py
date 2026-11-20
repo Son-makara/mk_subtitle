@@ -227,11 +227,11 @@ async def generate_speech_for_text(
         await loop.run_in_executor(None, generate_speech_mms_khmer_sync, clean_text, str(raw_path), gender)
         generated_offline = True
     else:
-        # 2. STRICT Online Edge-TTS (No silent fallback to offline MMS!)
+        # 2. Online Edge-TTS with Auto-Retry & Resilient Connection Handling
         edge_ok = False
         last_error = None
 
-        for attempt in range(3):
+        for attempt in range(4):
             try:
                 communicate = edge_tts.Communicate(text=clean_text, voice=voice, rate=rate, pitch=pitch, volume=volume)
                 await communicate.save(str(raw_path))
@@ -239,26 +239,33 @@ async def generate_speech_for_text(
                 break
             except Exception as e:
                 last_error = e
-                # Slight pause on connection retry
-                await asyncio.sleep(0.3 * (attempt + 1))
-                # Retry with slight rate adjustments if rate clipping occurs
-                if "Piseth" in voice or gender == "Male":
-                    alt_rates = ["-4%", "-2%", "+2%", "+0%"]
-                else:
-                    alt_rates = ["-4%", "-2%", "+2%", "+0%"]
-                for alt_rate in alt_rates:
-                    try:
-                        communicate = edge_tts.Communicate(text=clean_text, voice=voice, rate=alt_rate, pitch=pitch, volume=volume)
-                        await communicate.save(str(raw_path))
-                        edge_ok = True
-                        break
-                    except Exception:
-                        pass
-                if edge_ok:
+                # Back off on connection reset or network glitch
+                sleep_time = 0.5 * (attempt + 1)
+                await asyncio.sleep(sleep_time)
+
+                # Retry with standard rate if rate modulation caused handshake drop
+                try:
+                    communicate = edge_tts.Communicate(text=clean_text, voice=voice, rate="+0%", pitch="+0Hz", volume=volume)
+                    await communicate.save(str(raw_path))
+                    edge_ok = True
                     break
+                except Exception as e2:
+                    last_error = e2
+
+        # 3. If Edge-TTS was forcibly disconnected (WinError 10054 / network drop) and Khmer offline model is available, fallback gracefully
+        if not edge_ok:
+            if "km-KH" in (voice or "") and is_mms_khmer_available():
+                print(f"Notice: Edge-TTS connection closed ({last_error}), switching to local Meta MMS-TTS Khmer offline engine...")
+                try:
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, generate_speech_mms_khmer_sync, clean_text, str(raw_path), gender)
+                    generated_offline = True
+                    edge_ok = True
+                except Exception as mms_err:
+                    print(f"Offline MMS fallback error: {mms_err}")
 
         if not edge_ok:
-            raise RuntimeError(f"Edge-TTS Online voice failed ({last_error}). Check your internet connection or use ⚡ Offline mode.")
+            raise RuntimeError(f"Edge-TTS Online voice failed ({last_error}). Check your internet connection or switch to ⚡ Offline mode.")
 
     duration = get_audio_duration(str(raw_path))
     final_filename = raw_filename
@@ -355,10 +362,13 @@ async def generate_batch_tts(
             except Exception as trans_err:
                 print(f"Notice: pre-TTS translation error: {trans_err}")
 
-    sem = asyncio.Semaphore(2 if engine in ["mms-offline", "offline", "mms"] else 3)
+    sem = asyncio.Semaphore(2)
 
     async def process_item(item: SubtitleItem):
         async with sem:
+            # Gentle pacing to prevent Microsoft WebSocket rate-limiting and WinError 10054
+            await asyncio.sleep(0.08)
+
             # Pick voice based on item gender if specific voice not overridden
             selected_voice = voice
             if not selected_voice:

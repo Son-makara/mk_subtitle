@@ -41,6 +41,7 @@ import ExportModal from './components/ExportModal';
 import SettingsModal from './components/SettingsModal';
 import ShortcutsModal from './components/ShortcutsModal';
 import VideoQueueSidebar from './components/VideoQueueSidebar';
+import ThumbnailStudio from './components/ThumbnailStudio';
 import { formatTime } from './utils/time_formatter';
 import { getStoredTheme, getStoredAccent, applyTheme } from './utils/theme';
 
@@ -71,6 +72,9 @@ const extractErrorMessage = (errorData, defaultMsg = 'Operation failed') => {
 };
 
 export default function App() {
+  // Studio Workspace Mode: 'subtitle' | 'thumbnail'
+  const [studioMode, setStudioMode] = useState('subtitle');
+
   // Multi-Video Queue State
   const [videoQueue, setVideoQueue] = useState([]);
   const [activeVideoId, setActiveVideoId] = useState(null);
@@ -2634,6 +2638,89 @@ export default function App() {
             }}
           />
 
+          {/* Primary Studio Mode Switcher: Subtitle vs Thumbnail Studio */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              backgroundColor: 'var(--bg-base)',
+              padding: '2px',
+              borderRadius: '7px',
+              border: '1px solid var(--border-color)',
+              gap: '2px',
+              flexShrink: 0
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setStudioMode('subtitle')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '3px 8px',
+                borderRadius: '5px',
+                fontSize: '11px',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: studioMode === 'subtitle' ? 'var(--bg-hover)' : 'transparent',
+                color: studioMode === 'subtitle' ? '#ffffff' : 'var(--text-muted)',
+                boxShadow: studioMode === 'subtitle' ? '0 1px 3px rgba(0,0,0,0.3)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+              title="Subtitle, AI Dubbing & Timeline Editor"
+            >
+              <Film size={12} style={{ color: studioMode === 'subtitle' ? '#ef4444' : 'currentColor' }} />
+              <span>Subtitle Studio</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStudioMode('thumbnail')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '3px 8px',
+                borderRadius: '5px',
+                fontSize: '11px',
+                fontWeight: 600,
+                border: studioMode === 'thumbnail' ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid transparent',
+                cursor: 'pointer',
+                backgroundColor: studioMode === 'thumbnail' ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
+                color: studioMode === 'thumbnail' ? '#f87171' : 'var(--text-muted)',
+                boxShadow: studioMode === 'thumbnail' ? '0 1px 4px rgba(239,68,68,0.25)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+              title="Create YouTube & TikTok covers with Khmer text templates"
+            >
+              <Sparkles size={12} style={{ color: '#f59e0b' }} />
+              <span>Cover & Thumbnail</span>
+              <span
+                style={{
+                  fontSize: '9px',
+                  fontWeight: 800,
+                  backgroundColor: '#ef4444',
+                  color: '#ffffff',
+                  padding: '1px 4px',
+                  borderRadius: '3px',
+                  lineHeight: 1
+                }}
+              >
+                NEW
+              </span>
+            </button>
+          </div>
+
+          <div
+            style={{
+              height: '16px',
+              width: '1px',
+              backgroundColor: 'var(--border-color)',
+              margin: '0 2px'
+            }}
+          />
+
           {/* Current Video File Pill */}
           <div
             style={{
@@ -2851,9 +2938,19 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Studio Body: Video Queue Sidebar + Video Player & Tools + Subtitle Table */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
-        {/* 1. Far-Left Multi-Video Queue Sidebar */}
+      {/* 1. Subtitle Studio Complete Workspace (Queue + Player + Table + Timeline + Status Bar) */}
+      <div
+        style={{
+          display: studioMode === 'subtitle' ? 'flex' : 'none',
+          flexDirection: 'column',
+          flex: 1,
+          overflow: 'hidden',
+          minHeight: 0
+        }}
+      >
+        {/* Main Studio Body: Video Queue Sidebar + Video Player & Tools + Subtitle Table */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+          {/* 1. Far-Left Multi-Video Queue Sidebar */}
         <VideoQueueSidebar
           queue={videoQueue}
           activeVideoId={activeVideoId}
@@ -3840,6 +3937,26 @@ export default function App() {
           </span>
         </div>
       </div>
+      </div>
+
+      {/* 2. Cover & Thumbnail Studio Workspace */}
+      {studioMode === 'thumbnail' && (
+        <ThumbnailStudio
+          videoRef={videoRef}
+          videoUrl={videoUrl}
+          videoFilename={videoFilename}
+          currentTime={currentTime}
+          videoDuration={videoDuration}
+          videoQueue={videoQueue}
+          activeVideoId={activeVideoId}
+          onSelectVideo={handleSelectVideo}
+          onSwitchToSubtitle={() => setStudioMode('subtitle')}
+          onOpenExport={() => {
+            setExportType('burn');
+            setExportModalOpen(true);
+          }}
+        />
+      )}
 
       {/* Modals */}
       <AIModal

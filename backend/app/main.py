@@ -8,6 +8,7 @@ import subprocess
 import urllib.parse
 from pathlib import Path
 from typing import List, Optional
+from pydantic import BaseModel
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,6 +53,7 @@ from .services.translator import (
 from .services.whisper_stt import transcribe_video_whisper
 from .services.vocal_separator import separate_audio_vocals
 from .services.ffmpeg_runner import probe_video, render_and_burn_video, get_render_progress, concat_videos, split_video, render_mirror_video, resolve_video_file
+from .services.image_generator import generate_ai_cover_image, suggest_khmer_titles
 
 app = FastAPI(
     title="mk_subtitle API",
@@ -634,6 +636,46 @@ def get_system_installed_fonts():
 async def get_system_fonts_endpoint():
     """Returns fonts installed locally on this PC, categorized for subtitle rendering."""
     return get_system_installed_fonts()
+
+# ==================== AI Cover & Thumbnail Generator ====================
+
+class ThumbnailAiGenerateRequest(BaseModel):
+    prompt: str
+    aspect_ratio: str = "16:9"
+    style: str = "cinematic"
+    gemini_api_key: Optional[str] = None
+    reference_image_b64: Optional[str] = None
+
+class ThumbnailAiSuggestTitlesRequest(BaseModel):
+    prompt: str
+    gemini_api_key: Optional[str] = None
+
+@app.post("/api/thumbnail/ai-generate")
+async def ai_generate_thumbnail_endpoint(req: ThumbnailAiGenerateRequest):
+    """Generates an AI background cover using Free SANA/Pollinations or Google Imagen 3 with optional reference image."""
+    try:
+        result = await generate_ai_cover_image(
+            prompt=req.prompt,
+            aspect_ratio=req.aspect_ratio,
+            style=req.style,
+            gemini_api_key=req.gemini_api_key,
+            reference_image_b64=req.reference_image_b64
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/thumbnail/ai-suggest-titles")
+async def ai_suggest_titles_endpoint(req: ThumbnailAiSuggestTitlesRequest):
+    """Generates catchy Khmer titles & subtitle hooks for cover typography."""
+    try:
+        result = await suggest_khmer_titles(
+            prompt=req.prompt,
+            gemini_api_key=req.gemini_api_key
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== Video Rendering & Burning ====================
 
