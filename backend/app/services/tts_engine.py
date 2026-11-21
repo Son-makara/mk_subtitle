@@ -285,8 +285,8 @@ async def generate_speech_for_text(
         if duration > target_duration:
             is_exceeded = True
             if auto_fit:
-                # Cap tempo acceleration to max 1.30x so Khmer speech remains clear and natural (preventing fast/choppy audio)
-                tempo = min(duration / target_duration, 1.30)
+                # Dynamic Lip-Sync Auto-Fit: accelerate tempo up to 1.48x so speech naturally fits the character's speaking window
+                tempo = min(duration / target_duration, 1.48)
                 if tempo > 1.04:
                     stretched_filename = f"tts_fit_{unique_id}.mp3"
                     stretched_path = AUDIO_CACHE_DIR / stretched_filename
@@ -422,5 +422,12 @@ async def generate_batch_tts(
 
     tasks = [process_item(it.model_copy()) for it in items]
     results = await asyncio.gather(*tasks)
+
+    # Strict Lip-Sync: Ensure each voice starts on time with the character on screen
+    for it in results:
+        if it.audio_url and it.audio_status == "ready" and it.audio_duration:
+            it.audio_start = it.start_time
+            it.audio_end = round(it.start_time + it.audio_duration, 2)
+
     return results
 

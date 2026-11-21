@@ -32,6 +32,7 @@ export default function ShortcutsModal({ isOpen, onClose }) {
     {
       title: '📝 Subtitle Editing & Alignment',
       shortcuts: [
+        { keys: ['Ctrl', 'M'], desc: 'Merge selected consecutive subtitle lines', highlight: true },
         { keys: ['Ctrl', 'Enter'], desc: 'Add new subtitle line at current playhead' },
         { keys: ['['], desc: 'Set subtitle start time to current playhead' },
         { keys: [']'], desc: 'Set subtitle end time to current playhead' },

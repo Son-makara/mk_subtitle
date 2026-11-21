@@ -45,6 +45,7 @@ import ShortcutsModal from './components/ShortcutsModal';
 import VideoQueueSidebar from './components/VideoQueueSidebar';
 import { formatTime } from './utils/time_formatter';
 import { getStoredTheme, getStoredAccent, applyTheme } from './utils/theme';
+import { autoFixAudioOverlaps } from './utils/audio_aligner';
 
 const extractErrorMessage = (errorData, defaultMsg = 'Operation failed') => {
   if (!errorData) return defaultMsg;
@@ -73,9 +74,6 @@ const extractErrorMessage = (errorData, defaultMsg = 'Operation failed') => {
 };
 
 export default function App() {
-  // Studio Workspace Mode: 'subtitle' | 'thumbnail'
-  const [studioMode, setStudioMode] = useState('subtitle');
-
   // Multi-Video Queue State
   const [videoQueue, setVideoQueue] = useState([]);
   const [activeVideoId, setActiveVideoId] = useState(null);
@@ -494,19 +492,35 @@ export default function App() {
       }
     }
 
-    // Play Dubbed Voice clips
-    subtitles.forEach((item) => {
-      if (!item.audio_url || item.audio_status !== 'ready') return;
+    // Play Dubbed Voice clips (with anti-collision priority to prevent overlapping speech)
+    const activeAudios = subtitles.filter((item) => {
+      if (!item.audio_url || item.audio_status !== 'ready') return false;
       const start = item.audio_start !== undefined && item.audio_start !== null ? item.audio_start : item.start_time;
       const end = item.audio_end || (start + (item.audio_duration || 2.0));
+      return currentTime >= start && currentTime <= end;
+    });
 
+    let currentActiveItem = null;
+    if (activeAudios.length === 1) {
+      currentActiveItem = activeAudios[0];
+    } else if (activeAudios.length > 1) {
+      currentActiveItem = activeAudios.reduce((latest, it) => {
+        const latestStart = latest.audio_start !== undefined && latest.audio_start !== null ? latest.audio_start : latest.start_time;
+        const itStart = it.audio_start !== undefined && it.audio_start !== null ? it.audio_start : it.start_time;
+        return itStart > latestStart ? it : latest;
+      });
+    }
+
+    subtitles.forEach((item) => {
+      if (!item.audio_url || item.audio_status !== 'ready') return;
       let audioObj = audioSyncCache.current[item.id];
       if (!audioObj) {
         audioObj = new Audio(item.audio_url);
         audioSyncCache.current[item.id] = audioObj;
       }
 
-      if (currentTime >= start && currentTime <= end) {
+      if (currentActiveItem && item.id === currentActiveItem.id) {
+        const start = item.audio_start !== undefined && item.audio_start !== null ? item.audio_start : item.start_time;
         if (audioObj.paused) {
           const offset = Math.max(0, currentTime - start);
           if (Math.abs(audioObj.currentTime - offset) > 0.25) {
@@ -870,7 +884,7 @@ export default function App() {
         if (ttsRes.ok) {
           const ttsData = await ttsRes.json();
           if (ttsData.items && ttsData.items.length > 0) {
-            items = ttsData.items;
+            items = autoFixAudioOverlaps(ttsData.items);
           }
         }
 
@@ -1609,6 +1623,161 @@ export default function App() {
     setPlayingAudioId(null);
   };
 
+  // Merge multiple selected consecutive subtitle lines into 1 unified continuous line
+  const handleMergeSelectedSubtitles = () => {
+    if (selectedIds.length < 2) {
+      alert('Please select at least 2 subtitle lines to merge.');
+      return;
+    }
+
+    setSubtitles((prev) => {
+      const selectedSet = new Set(selectedIds);
+      const selectedItems = prev.filter((s) => selectedSet.has(s.id));
+      if (selectedItems.length < 2) return prev;
+
+      // Sort selected items chronologically
+      selectedItems.sort((a, b) => a.start_time - b.start_time);
+
+      const firstItem = selectedItems[0];
+      const lastItem = selectedItems[selectedItems.length - 1];
+
+      // Join original and translated text
+      const mergedText = selectedItems
+        .map((s) => (s.text || '').trim())
+        .filter(Boolean)
+        .join(' ');
+
+      const mergedTranslated = selectedItems
+        .map((s) => (s.translated_text || '').trim())
+        .filter(Boolean)
+        .join(' ');
+
+      // Invalidate audio cache for merged lines
+      selectedItems.forEach((s) => {
+        if (audioSyncCache.current[s.id]) {
+          try { audioSyncCache.current[s.id].pause(); } catch (_) {}
+          delete audioSyncCache.current[s.id];
+        }
+      });
+
+      const mergedId = `sub_${Date.now()}`;
+      const mergedItem = {
+        ...firstItem,
+        id: mergedId,
+        start_time: Number(firstItem.start_time.toFixed(2)),
+        end_time: Number(lastItem.end_time.toFixed(2)),
+        text: mergedText,
+        translated_text: mergedTranslated || null,
+        audio_url: null,
+        audio_status: 'idle',
+        audio_duration: null,
+        audio_start: Number(firstItem.start_time.toFixed(2)),
+        audio_end: null,
+        speed: 1.0,
+        is_duration_exceeded: false
+      };
+
+      // Replace items in array preserving position
+      const firstIndex = prev.findIndex((s) => s.id === firstItem.id);
+      const remaining = prev.filter((s) => !selectedSet.has(s.id));
+      remaining.splice(firstIndex, 0, mergedItem);
+
+      // Re-index all subtitles neatly 1, 2, 3...
+      const reindexed = remaining.map((it, idx) => ({ ...it, index: idx + 1 }));
+
+      setSelectedIds([mergedId]);
+
+      if (activeVideoId) {
+        setVideoQueue((qPrev) =>
+          qPrev.map((v) => (v.id === activeVideoId ? { ...v, subtitles: reindexed } : v))
+        );
+      }
+
+      setRenderToast({
+        type: 'success',
+        message: `🔗 Merged ${selectedItems.length} lines into 1 continuous dialogue (${firstItem.start_time.toFixed(1)}s - ${lastItem.end_time.toFixed(1)}s)!`
+      });
+      setTimeout(() => setRenderToast(null), 3500);
+
+      return reindexed;
+    });
+  };
+
+  // Auto-merge adjacent lines spoken by the same character/gender with close pause gaps
+  const handleAutoMergeBySpeaker = (gapThreshold = 1.0) => {
+    if (subtitles.length < 2) return;
+
+    setSubtitles((prev) => {
+      const sorted = [...prev].sort((a, b) => a.start_time - b.start_time);
+      const mergedList = [];
+      let currentMerge = null;
+      let totalMergedCount = 0;
+
+      for (let i = 0; i < sorted.length; i++) {
+        const item = sorted[i];
+
+        if (!currentMerge) {
+          currentMerge = { ...item };
+          continue;
+        }
+
+        const sameSpeaker =
+          (currentMerge.gender && item.gender && currentMerge.gender === item.gender) ||
+          (currentMerge.speaker && item.speaker && currentMerge.speaker === item.speaker);
+
+        const silenceGap = item.start_time - currentMerge.end_time;
+        const isCloseEnough = silenceGap >= -0.2 && silenceGap <= gapThreshold;
+
+        if (sameSpeaker && isCloseEnough) {
+          currentMerge.end_time = Math.max(currentMerge.end_time, item.end_time);
+          if (item.text) {
+            currentMerge.text = (currentMerge.text ? currentMerge.text + ' ' : '') + item.text.trim();
+          }
+          if (item.translated_text) {
+            currentMerge.translated_text = (currentMerge.translated_text ? currentMerge.translated_text + ' ' : '') + item.translated_text.trim();
+          }
+          currentMerge.audio_url = null;
+          currentMerge.audio_status = 'idle';
+          currentMerge.audio_duration = null;
+          totalMergedCount++;
+        } else {
+          mergedList.push(currentMerge);
+          currentMerge = { ...item };
+        }
+      }
+
+      if (currentMerge) {
+        mergedList.push(currentMerge);
+      }
+
+      if (totalMergedCount === 0) {
+        setRenderToast({
+          type: 'info',
+          message: `Notice: No adjacent lines with gap ≤ ${gapThreshold}s found for the same character.`
+        });
+        setTimeout(() => setRenderToast(null), 3000);
+        return prev;
+      }
+
+      audioSyncCache.current = {};
+      const reindexed = mergedList.map((it, idx) => ({ ...it, index: idx + 1 }));
+
+      if (activeVideoId) {
+        setVideoQueue((qPrev) =>
+          qPrev.map((v) => (v.id === activeVideoId ? { ...v, subtitles: reindexed } : v))
+        );
+      }
+
+      setRenderToast({
+        type: 'success',
+        message: `✨ Auto-merged ${totalMergedCount} lines into continuous character dialogues!`
+      });
+      setTimeout(() => setRenderToast(null), 4000);
+
+      return reindexed;
+    });
+  };
+
   // Generate audio for selected items (using Edge-TTS Online or Meta MMS Offline)
   const handleGenerateSelectedAudio = async (mode = null, engineOverride = null) => {
     if (subtitles.length === 0) {
@@ -1707,7 +1876,8 @@ export default function App() {
             delete audioSyncCache.current[it.id];
           }
         });
-        const updated = subtitles.map((s) => (lookup[s.id] ? { ...s, ...lookup[s.id] } : s));
+        const merged = subtitles.map((s) => (lookup[s.id] ? { ...s, ...lookup[s.id] } : s));
+        const updated = autoFixAudioOverlaps(merged);
         setSubtitles(updated);
 
         // Synchronize with active video in queue
@@ -1736,6 +1906,23 @@ export default function App() {
       setIsGeneratingAudio(false);
       setStatusMessage('');
     }
+  };
+
+  // Strict Lip-Sync: Pin all audio clips to their original subtitle timestamps so audio matches video on screen
+  const handleAutoFixAudioOverlaps = () => {
+    if (!subtitles || subtitles.length === 0) return;
+    const aligned = autoFixAudioOverlaps(subtitles);
+    setSubtitles(aligned);
+    if (activeVideoId) {
+      setVideoQueue((prev) =>
+        prev.map((v) => (v.id === activeVideoId ? { ...v, subtitles: aligned } : v))
+      );
+    }
+    setRenderToast({
+      type: 'success',
+      message: '⚡ Strict Lip-Sync applied: All voices aligned with on-screen characters!'
+    });
+    setTimeout(() => setRenderToast(null), 3500);
   };
 
   // Play single audio preview
@@ -2447,6 +2634,13 @@ export default function App() {
         e.preventDefault();
         setExportType('burn');
         setExportModalOpen(true);
+        return;
+      }
+
+      // 8.1. Merge Selected Subtitles (Ctrl + M)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        handleMergeSelectedSubtitles();
         return;
       }
 
@@ -3846,6 +4040,9 @@ export default function App() {
               setAiModalOpen(true);
             }}
             hasVideoLoaded={Boolean(videoUrl)}
+            onAutoFixOverlaps={handleAutoFixAudioOverlaps}
+            onMergeSelected={handleMergeSelectedSubtitles}
+            onAutoMergeSameSpeaker={handleAutoMergeBySpeaker}
           />
         </div>
       </div>

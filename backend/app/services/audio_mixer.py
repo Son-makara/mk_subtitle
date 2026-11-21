@@ -24,8 +24,7 @@ def build_dubbed_audio_track(
     output_path = AUDIO_CACHE_DIR / output_filename
 
     # Filter items that have audio_url
-    audio_items = []
-    max_audio_end = 0.0
+    raw_audio_items = []
     for it in items:
         if it.audio_url:
             clean_url = str(it.audio_url).split("?")[0]
@@ -40,30 +39,33 @@ def build_dubbed_audio_track(
             if fpath.exists():
                 start_sec = it.audio_start if (it.audio_start is not None) else it.start_time
                 dur = it.audio_duration or 2.0
-                max_audio_end = max(max_audio_end, start_sec + dur)
-                audio_items.append((max(start_sec, 0.0), fpath))
+                raw_audio_items.append((max(start_sec, 0.0), dur, fpath))
+
+    if not raw_audio_items:
+        # No actual audio files found to mix; return None so caller knows there is no dubbed voice
+        return None
+
+    # Strict Lip-Sync: audio clips start on time with each character on screen
+    raw_audio_items.sort(key=lambda x: x[0])
+    audio_items = raw_audio_items
+    max_audio_end = max((s + d for s, d, _ in raw_audio_items), default=0.0)
 
     # Ensure total duration encompasses all dubbed clips
     final_duration = max(total_duration, max_audio_end, 1.0)
 
-    if not audio_items:
-        # No actual audio files found to mix; return None so caller knows there is no dubbed voice
-        return None
-
-    # For large numbers of clips (e.g. 1-hour video with hundreds of lines),
-    # use direct high-speed numpy mixing to avoid Windows 32KB command line limits.
-    if len(audio_items) > 30 or final_duration > 300:
-        return _mix_audio_numpy(audio_items, final_duration, output_path)
-
-    # For small clip sets (<30), FFmpeg amix works fine
-    return _mix_audio_ffmpeg(audio_items, final_duration, output_path)
+    return _mix_audio_numpy(audio_items, final_duration, output_path)
 
 def _mix_audio_numpy(audio_items, final_duration: float, output_path: Path, target_sr: int = 44100) -> str:
-    """Mixes unlimited audio clips into a continuous audio timeline in memory in ~1s"""
+    """Mixes audio clips into a continuous audio timeline in memory with Strict Lip-Sync and anti-collision crossfade"""
     total_samples = int(final_duration * target_sr) + target_sr
     timeline = np.zeros((total_samples, 2), dtype=np.float32)
 
-    for start_sec, fpath in audio_items:
+    # Sort items chronologically by start time
+    sorted_items = sorted(audio_items, key=lambda x: x[0])
+
+    for i, item_data in enumerate(sorted_items):
+        start_sec = item_data[0]
+        fpath = item_data[-1]
         try:
             clip, sr = sf.read(str(fpath))
             if clip.ndim == 1:
@@ -81,7 +83,25 @@ def _mix_audio_numpy(audio_items, final_duration: float, output_path: Path, targ
                 ])
 
             start_idx = int(start_sec * target_sr)
-            end_idx = min(start_idx + len(clip), total_samples)
+            max_len = len(clip)
+
+            # Strict Lip-Sync & Anti-Overlap Trimming:
+            # If the next clip starts before this clip finishes, trim this clip with a smooth 40ms fade-out
+            # so Character 2's voice starts on time and Character 1 never speaks over Character 2.
+            if i < len(sorted_items) - 1:
+                next_start_sec = sorted_items[i + 1][0]
+                if next_start_sec > start_sec:
+                    allowed_samples = int((next_start_sec - start_sec) * target_sr)
+                    if allowed_samples < max_len:
+                        max_len = allowed_samples
+                        # Smooth 40ms fade-out to prevent any pop/click artifact
+                        fade_len = min(int(0.04 * target_sr), max_len)
+                        if fade_len > 0:
+                            fade_curve = np.linspace(1.0, 0.0, fade_len, dtype=np.float32)
+                            clip[max_len - fade_len:max_len, 0] *= fade_curve
+                            clip[max_len - fade_len:max_len, 1] *= fade_curve
+
+            end_idx = min(start_idx + max_len, total_samples)
             actual_len = end_idx - start_idx
             if actual_len > 0:
                 timeline[start_idx:end_idx] += clip[:actual_len]

@@ -13,6 +13,7 @@ import {
   Filter
 } from 'lucide-react';
 import { formatTime } from '../utils/time_formatter';
+import { computeAudioOverlaps } from '../utils/audio_aligner';
 
 export default function SubtitleDataTable({
   subtitles,
@@ -33,11 +34,19 @@ export default function SubtitleDataTable({
   onTtsEngineChange,
   onSubtitleUpload,
   onOpenWhisperModal,
-  hasVideoLoaded
+  hasVideoLoaded,
+  onAutoFixOverlaps,
+  onMergeSelected,
+  onAutoMergeSameSpeaker
 }) {
   const lastSelectedIndexRef = useRef(null);
   const subFileInputRef = useRef(null);
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'ready' | 'error' | 'pending' | 'generating'
+
+  // Detect and track consecutive audio speech overlaps
+  const { overlapMap, totalOverlaps } = useMemo(() => {
+    return computeAudioOverlaps(subtitles);
+  }, [subtitles]);
 
   // Calculate audio status counts
   const statusCounts = useMemo(() => {
@@ -213,13 +222,79 @@ export default function SubtitleDataTable({
                   Clear
                 </button>
               )}
+
+              {/* Merge Selected Lines Button */}
+              {selectedIds.length >= 2 && onMergeSelected && (
+                <button
+                  type="button"
+                  onClick={onMergeSelected}
+                  style={{
+                    padding: '3px 9px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: '1px solid #10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                    color: '#34d399',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#10b981';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.2)';
+                    e.currentTarget.style.color = '#34d399';
+                  }}
+                  title="Merge selected lines into 1 continuous character dialogue (Ctrl + M)"
+                >
+                  <Sparkles size={11} />
+                  <span>Merge Lines ({selectedIds.length})</span>
+                </button>
+              )}
             </div>
           )}
         </div>
 
-        {/* Right Side Actions: Google Translate, Generate Audio & Voice Selection */}
+        {/* Right Side Actions: Auto-Merge Speaker, Google Translate, Generate Audio & Voice Selection */}
         {subtitles.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* Auto-Merge Same Speaker Dialogue Button */}
+            {onAutoMergeSameSpeaker && subtitles.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onAutoMergeSameSpeaker(1.0)}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  borderRadius: '6px',
+                  border: '1px solid rgba(168, 85, 247, 0.4)',
+                  backgroundColor: 'rgba(168, 85, 247, 0.15)',
+                  color: '#c084fc',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.25)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.15)';
+                }}
+                title="Automatically merge consecutive lines spoken by the same character (gap ≤ 1.0s)"
+              >
+                <Users size={12} style={{ color: '#c084fc' }} />
+                <span>Auto-Merge Speaker</span>
+              </button>
+            )}
             {/* Google Translate Button Group */}
             <div
               style={{
@@ -631,6 +706,38 @@ export default function SubtitleDataTable({
                 }}
               >
                 Reset Filter
+              </button>
+            )}
+
+            {/* Quick Overlap Auto-Fix Button (Strict Lip-Sync) */}
+            {totalOverlaps > 0 && onAutoFixOverlaps && (
+              <button
+                type="button"
+                onClick={onAutoFixOverlaps}
+                style={{
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  borderRadius: '6px',
+                  border: '1px solid #10b981',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  color: '#34d399',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.25)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+                }}
+                title="Strict Lip-Sync: Align all voices to start on time with on-screen characters"
+              >
+                <Sparkles size={11} style={{ color: '#34d399' }} />
+                <span>Strict Lip-Sync ({totalOverlaps})</span>
               </button>
             )}
           </div>
@@ -1126,6 +1233,27 @@ export default function SubtitleDataTable({
                             >
                               {item.audio_engine === 'mms-offline' ? '⚡ Local' : '🌐 Cloud'}
                             </span>
+                            {overlapMap[item.id] && (
+                              <span
+                                style={{
+                                  fontSize: '9px',
+                                  padding: '1px 5px',
+                                  borderRadius: '3px',
+                                  fontWeight: 600,
+                                  backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                                  color: '#fbbf24',
+                                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                                  cursor: onAutoFixOverlaps ? 'pointer' : 'default'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onAutoFixOverlaps) onAutoFixOverlaps();
+                                }}
+                                title={`Audio overlaps line #${overlapMap[item.id].nextIndex} by ${overlapMap[item.id].overlapSec}s. Click to auto-align.`}
+                              >
+                                ⚠️ +{overlapMap[item.id].overlapSec}s
+                              </span>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => handleRetrySingle(item, e)}
