@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Download, Flame, X, Check, FileText, FolderCheck, HardDrive, Trash2, Type, Sliders, Eye, Upload, Image as ImageIcon, Layers, ArrowUp, ArrowDown, Plus, Film, Loader2, FolderOpen, Play, Pause, Volume2, VolumeX, CheckCircle2, Shield, EyeOff, Music, Sparkles, Move, Square, Circle, Scissors, Clock, RefreshCw, ArrowUpDown, FlipHorizontal, FlipVertical, RotateCw, Bookmark, Clapperboard, Video, Tag } from 'lucide-react';
+import { downloadFile, openFileLocation } from '../utils/file_downloader';
 
 export default function ExportModal({
   isOpen,
@@ -1386,15 +1387,15 @@ export default function ExportModal({
                     <FolderCheck size={14} style={{ color: '#34d399' }} />
                     <span>Open in Folder</span>
                   </button>
-                  <a
-                    href={mergeResult.download_url}
-                    download={mergeResult.export_filename}
+                  <button
+                    type="button"
+                    onClick={() => downloadFile({ downloadUrl: mergeResult.download_url, filename: mergeResult.export_filename || 'merged_video.mp4', openFolder: true })}
                     className="btn-primary"
-                    style={{ fontSize: '12px', padding: '6px 14px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ fontSize: '12px', padding: '6px 14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
                     <Download size={14} />
                     <span>Download Merged Video</span>
-                  </a>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setMergeResult(null)}
@@ -1810,15 +1811,15 @@ export default function ExportModal({
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-bright)' }}>{r.filename}</span>
                         <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>({r.start_time} ➔ {r.end_time} · {r.size_mb} MB)</span>
                       </div>
-                      <a
-                        href={r.download_url}
-                        download={r.filename}
+                      <button
+                        type="button"
+                        onClick={() => downloadFile({ downloadUrl: r.download_url, filename: r.filename || `part_${r.part_index}.mp4`, openFolder: true })}
                         className="btn-primary"
-                        style={{ fontSize: '11px', padding: '4px 10px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
+                        style={{ fontSize: '11px', padding: '4px 10px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
                       >
                         <Download size={12} />
                         <span>Download</span>
-                      </a>
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -2329,21 +2330,25 @@ export default function ExportModal({
                     <FolderCheck size={18} /> Choose Location & Save Video
                   </button>
 
-                  <a
-                    href={downloadResult.download_url}
-                    download={downloadResult.export_filename || 'rendered_video.mp4'}
+                  <button
+                    type="button"
+                    onClick={() => downloadFile({ downloadUrl: downloadResult.download_url, filename: downloadResult.export_filename || 'rendered_video.mp4', openFolder: true })}
                     className="btn-secondary"
                     style={{
                       padding: '10px',
                       justifyContent: 'center',
                       fontSize: '13px',
                       fontWeight: 500,
-                      textDecoration: 'none',
+                      cursor: 'pointer',
+                      border: '1px solid var(--border-color)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
                       color: 'var(--text-bright)'
                     }}
                   >
                     <Download size={16} /> Direct Download
-                  </a>
+                  </button>
 
                   {/* Back to Edit Subtitle Style & Re-render */}
                   <button
@@ -4826,13 +4831,13 @@ export default function ExportModal({
                       {quickMirrorResult && (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', color: '#6ee7b7' }}>
                           <span>✅ Created: {quickMirrorResult.export_filename} ({quickMirrorResult.size_mb} MB)</span>
-                          <a
-                            href={quickMirrorResult.download_url}
-                            download={quickMirrorResult.export_filename}
-                            style={{ color: '#fff', backgroundColor: '#059669', padding: '2px 8px', borderRadius: '4px', textDecoration: 'none', fontWeight: 600 }}
+                          <button
+                            type="button"
+                            onClick={() => downloadFile({ downloadUrl: quickMirrorResult.download_url, filename: quickMirrorResult.export_filename || 'quick_mirrored.mp4', openFolder: true })}
+                            style={{ color: '#fff', backgroundColor: '#059669', padding: '2px 8px', borderRadius: '4px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
                           >
-                            Download
-                          </a>
+                            <Download size={11} /> Download
+                          </button>
                         </div>
                       )}
                     </div>

@@ -36,12 +36,232 @@ import {
   Bookmark,
   BookmarkPlus,
   SlidersHorizontal,
-  Sun
+  Sun,
+  FolderOpen,
+  Languages,
+  Loader2
 } from 'lucide-react';
 import { formatTime } from '../utils/time_formatter';
+import { downloadFile, openFileLocation } from '../utils/file_downloader';
+
+// Pre-defined Khmer Movie Title Typography Presets (ពុម្ពក្បាច់អក្សរខ្មែរ 3D)
+export const KHMER_TITLE_STYLES = [
+  {
+    id: 'time_travel_gold_3d',
+    name: '🌟 ឆ្លងភពមាសក្សត្រ 3D (ដូចរូបគំរូ)',
+    enName: 'Blockbuster 3D Gold + Ornate Crest',
+    fontFamily: 'Koulen',
+    gradient: 'gold_super_metal',
+    color: '#fff7a0',
+    strokeColor: '#2b0707',
+    strokeWidth: 9,
+    outerGlowColor: '#ff5500',
+    outerGlowBlur: 30,
+    depth3d: true,
+    depthColor: '#350808',
+    depthOutline: '#150202',
+    depthSteps: 15,
+    shadowColor: 'rgba(255, 85, 0, 0.95)',
+    shadowBlur: 24,
+    pillBg: 'transparent',
+    category: '⭐ ដូចរូបគំរូ',
+    hasCrestBanner: true,
+    crestAuraColor: 'cyan'
+  },
+  {
+    id: 'gold_3d',
+    name: '👑 មាសក្សត្រ 3D',
+    enName: 'Royal 3D Metallic Gold',
+    fontFamily: 'Koulen',
+    gradient: 'gold_royal',
+    color: '#facc15',
+    strokeColor: '#000000',
+    strokeWidth: 9,
+    shadowColor: 'rgba(234, 179, 8, 0.85)',
+    shadowBlur: 22,
+    depth3d: true,
+    pillBg: 'transparent',
+    category: 'Epic & Royal'
+  },
+  {
+    id: 'inferno_fire',
+    name: '🔥 ភ្លើងឆេះ វាយប្រហារ',
+    enName: 'Action Inferno Fire',
+    fontFamily: 'Koulen',
+    gradient: 'fire_action',
+    color: '#ea580c',
+    strokeColor: '#000000',
+    strokeWidth: 8,
+    shadowColor: 'rgba(239, 68, 68, 0.95)',
+    shadowBlur: 25,
+    depth3d: true,
+    pillBg: 'transparent',
+    category: 'Action & Wuxia'
+  },
+  {
+    id: 'dark_blood',
+    name: '🩸 ឈាមព្រៃ ព្រឺព្រួច',
+    enName: 'Dark Blood Horror',
+    fontFamily: 'Moul',
+    gradient: 'blood_ruby',
+    color: '#dc2626',
+    strokeColor: '#000000',
+    strokeWidth: 7,
+    shadowColor: 'rgba(185, 28, 28, 0.9)',
+    shadowBlur: 20,
+    depth3d: false,
+    pillBg: 'transparent',
+    category: 'Horror & Ghost'
+  },
+  {
+    id: 'ice_cyan',
+    name: '💎 ពេជ្រទឹកកក ទេវកថា',
+    enName: 'Mythic Ice Cyan',
+    fontFamily: 'Koulen',
+    gradient: 'ice_cyan',
+    color: '#38bdf8',
+    strokeColor: '#000000',
+    strokeWidth: 8,
+    shadowColor: 'rgba(56, 189, 248, 0.9)',
+    shadowBlur: 22,
+    depth3d: true,
+    pillBg: 'transparent',
+    category: 'Fantasy & Sci-Fi'
+  },
+  {
+    id: 'neon_cyber',
+    name: '⚡ ណេអុងស៊ីវិល័យ',
+    enName: 'Cyberpunk Neon Glow',
+    fontFamily: 'Koulen',
+    gradient: 'neon_violet',
+    color: '#c084fc',
+    strokeColor: '#09090b',
+    strokeWidth: 7,
+    shadowColor: 'rgba(192, 132, 252, 0.95)',
+    shadowBlur: 28,
+    depth3d: false,
+    pillBg: 'transparent',
+    category: 'Modern & Sci-Fi'
+  },
+  {
+    id: 'khmer_heritage',
+    name: '🏛️ ក្បាច់មរតកខ្មែរ',
+    enName: 'Antique Khmer Bronze',
+    fontFamily: 'Moul',
+    gradient: 'antique_bronze',
+    color: '#fbbf24',
+    strokeColor: '#1c1917',
+    strokeWidth: 6,
+    shadowColor: 'rgba(217, 119, 6, 0.8)',
+    shadowBlur: 16,
+    depth3d: false,
+    pillBg: 'transparent',
+    category: 'Heritage & Drama'
+  },
+  {
+    id: 'chrome_silver',
+    name: '🥈 ប្រាក់ផ្លាកទីន',
+    enName: 'Platinum Chrome Steel',
+    fontFamily: 'Koulen',
+    gradient: 'chrome_metal',
+    color: '#f8fafc',
+    strokeColor: '#000000',
+    strokeWidth: 8,
+    shadowColor: 'rgba(255, 255, 255, 0.7)',
+    shadowBlur: 18,
+    depth3d: true,
+    pillBg: 'transparent',
+    category: 'Modern Action'
+  },
+  {
+    id: 'cinema_box',
+    name: '🎬 ផ្លាកកុនហូលីវូដ',
+    enName: 'Hollywood Cinema Box',
+    fontFamily: 'Koulen',
+    gradient: 'none',
+    color: '#ffffff',
+    strokeColor: '#000000',
+    strokeWidth: 0,
+    shadowColor: 'rgba(0, 0, 0, 0.9)',
+    shadowBlur: 14,
+    depth3d: false,
+    pillBg: '#dc2626',
+    category: 'Recap & YouTube'
+  },
+  {
+    id: 'golden_sunset',
+    name: '🌅 មនោសញ្ចេតនា',
+    enName: 'Golden Sunset Romance',
+    fontFamily: 'Moul',
+    gradient: 'sunset_glow',
+    color: '#f59e0b',
+    strokeColor: '#000000',
+    strokeWidth: 6,
+    shadowColor: 'rgba(245, 158, 11, 0.85)',
+    shadowBlur: 16,
+    depth3d: false,
+    pillBg: 'transparent',
+    category: 'Romance & Drama'
+  }
+];
 
 // Pre-defined Khmer Cover Presets
 const KHMER_PRESETS = [
+  {
+    id: 'blockbuster_time_travel',
+    name: '🌟 ឆ្លងភព 3D + បដាយីហោ (ដូចរូបគំរូ)',
+    aspectRatio: '16:9',
+    vignette: 'bottom_heavy',
+    showMovieCrest: true,
+    crestAuraColor: 'cyan',
+    texts: [
+      {
+        id: 'title',
+        text: 'ឆ្លងទៅឆ្នាំ៦០',
+        fontFamily: 'Koulen',
+        fontSize: 90,
+        color: '#fff7a0',
+        gradient: 'gold_super_metal',
+        strokeColor: '#2b0707',
+        strokeWidth: 9,
+        outerGlowColor: '#ff5500',
+        outerGlowBlur: 30,
+        depth3d: true,
+        depthColor: '#350808',
+        depthOutline: '#150202',
+        depthSteps: 15,
+        shadowColor: 'rgba(255, 85, 0, 0.95)',
+        shadowBlur: 24,
+        x: 50,
+        y: 68,
+        align: 'center',
+        pillBg: 'transparent'
+      },
+      {
+        id: 'subtitle',
+        text: 'មានប្រព័ន្ធផ្សារទំនើប',
+        fontFamily: 'Moul',
+        fontSize: 44,
+        color: '#ffffff',
+        gradient: 'silver_metal',
+        strokeColor: '#3b0606',
+        strokeWidth: 7,
+        outerGlowColor: '#ef4444',
+        outerGlowBlur: 16,
+        depth3d: true,
+        depthColor: '#260404',
+        depthOutline: '#100101',
+        depthSteps: 8,
+        shadowColor: 'rgba(0,0,0,0.9)',
+        shadowBlur: 10,
+        x: 50,
+        y: 81,
+        align: 'center',
+        pillBg: 'transparent'
+      }
+    ],
+    badges: ['1080p', 'khmer_dub']
+  },
   {
     id: 'cinema_action',
     name: '🎬 Cinema Action (YouTube)',
@@ -282,11 +502,15 @@ export default function ThumbnailStudio({
   activeVideoId = null,
   onSelectVideo,
   onSwitchToSubtitle,
-  onOpenExport
+  onOpenExport,
+  onOpenSettings
 }) {
   // Studio Canvas & Configuration States
   const [aspectRatio, setAspectRatio] = useState('16:9'); // '16:9', '9:16', '1:1'
-  const [activeTab, setActiveTab] = useState('templates'); // 'templates', 'text', 'overlays', 'batch'
+  const [activeTab, setActiveTab] = useState('styles'); // 'styles', 'poster', 'text', 'overlays', 'batch'
+  const [appliedTitleStyleId, setAppliedTitleStyleId] = useState('time_travel_gold_3d');
+  const [showMovieCrest, setShowMovieCrest] = useState(true);
+  const [crestAuraColor, setCrestAuraColor] = useState('cyan');
   const [backgroundImage, setBackgroundImage] = useState(null); // Image object or data URL
   const [vignetteMode, setVignetteMode] = useState('bottom_heavy'); // 'none', 'bottom_heavy', 'cinematic', 'full_dark', 'dual_bars'
   const [vignetteOpacity, setVignetteOpacity] = useState(70); // 0 - 100%
@@ -316,18 +540,116 @@ export default function ThumbnailStudio({
   const [isCapturingFrame, setIsCapturingFrame] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [downloadFeedback, setDownloadFeedback] = useState(null);
   const [batchExportStatus, setBatchExportStatus] = useState(null);
 
   // AI Cover Generation States
-  const [aiPrompt, setAiPrompt] = useState('Epic action movie battle scene with explosion, fire embers, dark dramatic sky');
-  const [aiStyle, setAiStyle] = useState('cinematic'); // 'cinematic', 'action', 'horror', 'romance', 'cyberpunk', 'khmer_myth', 'anime'
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiStyle, setAiStyle] = useState('cinematic');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [aiError, setAiError] = useState(null);
   const [aiEngineNotice, setAiEngineNotice] = useState(null);
   const [aiSuggestedTitles, setAiSuggestedTitles] = useState([]);
   const [aiSuggestedSubtitles, setAiSuggestedSubtitles] = useState([]);
   const [isSuggestingTitles, setIsSuggestingTitles] = useState(false);
-  const geminiApiKey = localStorage.getItem('mk_gemini_api_key') || '';
+  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('mk_gemini_api_key') || '');
+  const [isGeminiConnected, setIsGeminiConnected] = useState(false);
+  const [maskedGeminiKey, setMaskedGeminiKey] = useState(null);
+  const [showGeminiKeyModal, setShowGeminiKeyModal] = useState(false);
+  const [tempGeminiKey, setTempGeminiKey] = useState(geminiApiKey);
+  const [isVerifyingGeminiKey, setIsVerifyingGeminiKey] = useState(false);
+  const [geminiVerifyError, setGeminiVerifyError] = useState(null);
+  const [geminiSuccessNotice, setGeminiSuccessNotice] = useState(null);
+
+  // Check backend Google Gemini connection status on mount and sync on storage events
+  useEffect(() => {
+    const refreshKeyStatus = () => {
+      fetch('/api/settings/gemini-key')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.is_connected) {
+            setIsGeminiConnected(true);
+            setMaskedGeminiKey(data.masked_key);
+          } else {
+            setIsGeminiConnected(false);
+            setMaskedGeminiKey(null);
+          }
+        })
+        .catch((e) => console.warn('Could not check Gemini key status:', e));
+    };
+
+    refreshKeyStatus();
+
+    const handleStorageChange = (e) => {
+      if (e.key === 'mk_gemini_api_key' || !e.key) {
+        const stored = localStorage.getItem('mk_gemini_api_key') || '';
+        setGeminiApiKey(stored);
+        setTempGeminiKey(stored);
+        refreshKeyStatus();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const handleSaveGeminiKey = async (k, silent = false) => {
+    const trimmed = (k || '').trim();
+    if (!trimmed) {
+      if (!silent) setGeminiVerifyError('Please enter a valid Google Gemini API key.');
+      return;
+    }
+    if (!silent) {
+      setIsVerifyingGeminiKey(true);
+      setGeminiVerifyError(null);
+      setGeminiSuccessNotice(null);
+    }
+
+    try {
+      const res = await fetch('/api/settings/gemini-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: trimmed })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Validation failed');
+      }
+
+      const data = await res.json();
+      localStorage.setItem('mk_gemini_api_key', trimmed);
+      setGeminiApiKey(trimmed);
+      setIsGeminiConnected(true);
+      setMaskedGeminiKey(data.masked_key);
+      setGeminiSuccessNotice('Google Gemini Connected & Verified Successfully!');
+      setTimeout(() => setGeminiSuccessNotice(null), 4000);
+      if (!silent) {
+        setShowGeminiKeyModal(false);
+      }
+    } catch (err) {
+      console.error('Gemini verify error:', err);
+      if (!silent) {
+        setGeminiVerifyError(err.message || 'Failed to verify key with Google.');
+      }
+    } finally {
+      if (!silent) setIsVerifyingGeminiKey(false);
+    }
+  };
+
+  const handleDisconnectGemini = async () => {
+    try {
+      await fetch('/api/settings/gemini-key', { method: 'DELETE' });
+    } catch (e) {
+      console.warn(e);
+    }
+    localStorage.removeItem('mk_gemini_api_key');
+    setGeminiApiKey('');
+    setTempGeminiKey('');
+    setIsGeminiConnected(false);
+    setMaskedGeminiKey(null);
+    setGeminiSuccessNotice('Disconnected from Google Gemini.');
+    setTimeout(() => setGeminiSuccessNotice(null), 3000);
+  };
 
   // Reference / Original Image States for AI Image-to-Image & Subject Overlay
   const [refImage, setRefImage] = useState(null);
@@ -336,6 +658,12 @@ export default function ThumbnailStudio({
   const [subjectScale, setSubjectScale] = useState(100); // 50 - 150%
   const [subjectX, setSubjectX] = useState(50); // 10 - 90%
   const [subjectGlow, setSubjectGlow] = useState('none'); // 'none', 'gold', 'cyan', 'red', 'white'
+
+  // Poster Title Analysis & Translation States (Chinese/Foreign -> Khmer)
+  const [isTranslatingPoster, setIsTranslatingPoster] = useState(false);
+  const [posterAnalysisResult, setPosterAnalysisResult] = useState(null);
+  const [posterTranslateError, setPosterTranslateError] = useState(null);
+  const [customPosterTitle, setCustomPosterTitle] = useState('');
 
   // Undo & Redo History Stacks
   const [undoStack, setUndoStack] = useState([]);
@@ -443,9 +771,15 @@ export default function ThumbnailStudio({
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
+      const dUrl = evt.target.result;
       const img = new Image();
       img.onload = () => setBackgroundImage(img);
-      img.src = evt.target.result;
+      img.src = dUrl;
+      // Also register as reference image so user can easily translate poster title
+      setRefImageDataUrl(dUrl);
+      const rImg = new Image();
+      rImg.onload = () => setRefImage(rImg);
+      rImg.src = dUrl;
     };
     reader.readAsDataURL(file);
   };
@@ -577,6 +911,12 @@ export default function ThumbnailStudio({
       badgesObj[b] = true;
     });
     setEnabledBadges(badgesObj);
+    if (preset.showMovieCrest !== undefined) {
+      setShowMovieCrest(!!preset.showMovieCrest);
+    }
+    if (preset.crestAuraColor) {
+      setCrestAuraColor(preset.crestAuraColor);
+    }
   };
 
   // Function to Render Full Canvas
@@ -744,6 +1084,139 @@ export default function ThumbnailStudio({
       ctx.restore();
     }
 
+    // 3.8. Draw Ornate Movie Crest Banner & Cyan Plasma Cosmic Aura (if showMovieCrest is true)
+    if (showMovieCrest) {
+      const titleEl = textElements.find((t) => t.id === 'title') || textElements[0];
+      const subEl = textElements.find((t) => t.id === 'subtitle') || (textElements.length > 1 ? textElements[1] : null);
+
+      if (titleEl) {
+        const titleX = (titleEl.x / 100) * width;
+        const titleY = (titleEl.y / 100) * height;
+        const subY = subEl ? (subEl.y / 100) * height : titleY + titleEl.fontSize * 0.85;
+        const centerY = (titleY + subY) / 2;
+
+        ctx.save();
+
+        // 1. Electric Cyan/Blue Cosmic Energy Plasma Ring behind text
+        const auraColor = crestAuraColor === 'gold' ? '#f59e0b' :
+                          crestAuraColor === 'red' ? '#ef4444' :
+                          crestAuraColor === 'purple' ? '#c084fc' : '#00f0ff';
+        const auraWidth = Math.max(width * 0.52, 540);
+        const auraHeight = Math.max(height * 0.24, 150);
+
+        // Soft radial aura glow
+        const radAura = ctx.createRadialGradient(titleX, centerY, 30, titleX, centerY, auraWidth * 0.52);
+        radAura.addColorStop(0, auraColor === '#00f0ff' ? 'rgba(0, 240, 255, 0.45)' : 'rgba(245, 158, 11, 0.45)');
+        radAura.addColorStop(0.5, auraColor === '#00f0ff' ? 'rgba(6, 182, 212, 0.22)' : 'rgba(234, 88, 12, 0.22)');
+        radAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = radAura;
+        ctx.beginPath();
+        ctx.ellipse(titleX, centerY, auraWidth * 0.52, auraHeight * 0.65, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glowing cosmic orbital rings
+        ctx.strokeStyle = auraColor;
+        ctx.shadowColor = auraColor;
+        ctx.shadowBlur = 24;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.ellipse(titleX, centerY - 6, auraWidth * 0.45, 36, -0.04, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.lineWidth = 1.8;
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.ellipse(titleX, centerY + 8, auraWidth * 0.47, 28, 0.03, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 2. Ornate Crest Plate / Ribbon underneath Subtitle
+        const bannerW = Math.max(width * 0.42, 460);
+        const bannerH = 50;
+        const bannerY = subY;
+        const bLeft = titleX - bannerW / 2;
+        const bRight = titleX + bannerW / 2;
+
+        // Dark Burgundy ribbon plate
+        const ribbonGrad = ctx.createLinearGradient(0, bannerY - bannerH / 2, 0, bannerY + bannerH / 2);
+        ribbonGrad.addColorStop(0, '#4a0808');
+        ribbonGrad.addColorStop(0.5, '#280404');
+        ribbonGrad.addColorStop(1, '#150202');
+
+        ctx.fillStyle = ribbonGrad;
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.moveTo(bLeft, bannerY - bannerH / 2 + 8);
+        ctx.lineTo(bLeft - 20, bannerY);
+        ctx.lineTo(bLeft, bannerY + bannerH / 2 - 8);
+        ctx.lineTo(bRight, bannerY + bannerH / 2 - 8);
+        ctx.lineTo(bRight + 20, bannerY);
+        ctx.lineTo(bRight, bannerY - bannerH / 2 + 8);
+        ctx.closePath();
+        ctx.fill();
+
+        // Golden ornate border on ribbon
+        const goldBorderGrad = ctx.createLinearGradient(bLeft, 0, bRight, 0);
+        goldBorderGrad.addColorStop(0, '#f59e0b');
+        goldBorderGrad.addColorStop(0.2, '#fef08a');
+        goldBorderGrad.addColorStop(0.5, '#ffffff');
+        goldBorderGrad.addColorStop(0.8, '#fef08a');
+        goldBorderGrad.addColorStop(1, '#f59e0b');
+
+        ctx.strokeStyle = goldBorderGrad;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = '#f59e0b';
+        ctx.shadowBlur = 10;
+        ctx.stroke();
+
+        // 3. Ornate Golden Wings / Baroque Filigree underneath
+        const wingY = bannerY + bannerH / 2 - 4;
+        ctx.strokeStyle = goldBorderGrad;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 12;
+
+        // Left wing flourish
+        ctx.beginPath();
+        ctx.moveTo(titleX - 35, wingY);
+        ctx.bezierCurveTo(titleX - 90, wingY + 18, titleX - 160, wingY + 12, titleX - 220, wingY + 2);
+        ctx.bezierCurveTo(titleX - 180, wingY + 22, titleX - 100, wingY + 24, titleX - 30, wingY + 8);
+        ctx.stroke();
+
+        // Right wing flourish
+        ctx.beginPath();
+        ctx.moveTo(titleX + 35, wingY);
+        ctx.bezierCurveTo(titleX + 90, wingY + 18, titleX + 160, wingY + 12, titleX + 220, wingY + 2);
+        ctx.bezierCurveTo(titleX + 180, wingY + 22, titleX + 100, wingY + 24, titleX + 30, wingY + 8);
+        ctx.stroke();
+
+        // Center Golden Crest Shield Emblem
+        const emblemY = wingY + 8;
+        ctx.fillStyle = '#f59e0b';
+        ctx.shadowColor = '#fef08a';
+        ctx.shadowBlur = 14;
+
+        ctx.beginPath();
+        ctx.moveTo(titleX, emblemY + 14);
+        ctx.lineTo(titleX - 15, emblemY - 4);
+        ctx.lineTo(titleX + 15, emblemY - 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Mini emblem icon inside shield
+        ctx.fillStyle = '#1e0404';
+        ctx.font = '900 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🛒', titleX, emblemY + 4);
+
+        ctx.restore();
+      }
+    }
+
     // 4. Render All Text Elements with Khmer Typography Engine
     textElements.forEach((el) => {
       ctx.save();
@@ -782,15 +1255,52 @@ export default function ThumbnailStudio({
         ctx.fill();
       }
 
-      // Drop Shadow
+      // 3D Extrusion Solid Block (shaded slices with sharp outlines)
+      if (el.depth3d) {
+        ctx.save();
+        ctx.shadowColor = 'transparent';
+        const depthColor = el.depthColor || '#350808';
+        const depthOutline = el.depthOutline || '#150202';
+        const depthSteps = el.depthSteps || 14;
+        const depthStepX = 0.25;
+        const depthStepY = 1.15;
+
+        for (let d = depthSteps; d >= 1; d--) {
+          const curX = targetX + d * depthStepX;
+          const curY = targetY + d * depthStepY;
+          ctx.fillStyle = depthColor;
+          ctx.strokeStyle = depthOutline;
+          ctx.lineWidth = Math.max(2, (el.strokeWidth || 4) - 2);
+          ctx.lineJoin = 'round';
+          ctx.strokeText(processedText, curX, curY);
+          ctx.fillText(processedText, curX, curY);
+        }
+        ctx.restore();
+      }
+
+      // Drop Shadow / Glow
       if (el.shadowBlur && el.shadowBlur > 0) {
         ctx.shadowColor = el.shadowColor || 'rgba(0,0,0,0.85)';
         ctx.shadowBlur = el.shadowBlur;
-        ctx.shadowOffsetX = 3;
-        ctx.shadowOffsetY = 4;
+        ctx.shadowOffsetX = el.depth3d ? 2 : 3;
+        ctx.shadowOffsetY = el.depth3d ? 3 : 4;
       }
 
-      // Stroke / Outline
+      // Outer Fire Blaze Glow / Double Stroke (Behind main stroke)
+      if (el.outerGlowColor) {
+        ctx.save();
+        ctx.shadowColor = el.outerGlowColor;
+        ctx.shadowBlur = el.outerGlowBlur || 26;
+        ctx.strokeStyle = el.outerGlowColor;
+        ctx.lineWidth = (el.strokeWidth || 6) * 2 + 10;
+        ctx.lineJoin = 'round';
+        ctx.miterLimit = 2;
+        ctx.strokeText(processedText, targetX, targetY);
+        ctx.strokeText(processedText, targetX, targetY);
+        ctx.restore();
+      }
+
+      // Inner Stroke / Outline
       if (el.strokeWidth && el.strokeWidth > 0) {
         ctx.strokeStyle = el.strokeColor || '#000000';
         ctx.lineWidth = el.strokeWidth * 2;
@@ -799,25 +1309,67 @@ export default function ThumbnailStudio({
         ctx.strokeText(processedText, targetX, targetY);
       }
 
-      // Text Fill: Solid or Multi-Color Gradient
-      if (el.gradient === 'gold') {
+      // Multi-Gradient & Solid Color Rendering
+      const gradType = el.gradient;
+      if (gradType && gradType !== 'none') {
         const textGrad = ctx.createLinearGradient(0, targetY - el.fontSize / 2, 0, targetY + el.fontSize / 2);
-        textGrad.addColorStop(0, '#fef08a');
-        textGrad.addColorStop(0.45, '#facc15');
-        textGrad.addColorStop(1, '#eab308');
+        if (gradType === 'gold_super_metal') {
+          textGrad.addColorStop(0, '#ffffff');
+          textGrad.addColorStop(0.18, '#fffbeb');
+          textGrad.addColorStop(0.35, '#fef08a');
+          textGrad.addColorStop(0.55, '#f59e0b');
+          textGrad.addColorStop(0.85, '#d97706');
+          textGrad.addColorStop(1, '#92400e');
+        } else if (gradType === 'silver_metal') {
+          textGrad.addColorStop(0, '#ffffff');
+          textGrad.addColorStop(0.35, '#f1f5f9');
+          textGrad.addColorStop(0.65, '#cbd5e1');
+          textGrad.addColorStop(1, '#94a3b8');
+        } else if (gradType === 'gold' || gradType === 'gold_royal') {
+          textGrad.addColorStop(0, '#ffffff');
+          textGrad.addColorStop(0.2, '#fef08a');
+          textGrad.addColorStop(0.65, '#f59e0b');
+          textGrad.addColorStop(1, '#b45309');
+        } else if (gradType === 'fire' || gradType === 'fire_action') {
+          textGrad.addColorStop(0, '#fef08a');
+          textGrad.addColorStop(0.3, '#fb923c');
+          textGrad.addColorStop(0.7, '#ea580c');
+          textGrad.addColorStop(1, '#991b1b');
+        } else if (gradType === 'blood_ruby' || gradType === 'blood') {
+          textGrad.addColorStop(0, '#fca5a5');
+          textGrad.addColorStop(0.3, '#ef4444');
+          textGrad.addColorStop(0.7, '#b91c1c');
+          textGrad.addColorStop(1, '#450a0a');
+        } else if (gradType === 'cyan' || gradType === 'ice_cyan') {
+          textGrad.addColorStop(0, '#f0fdf4');
+          textGrad.addColorStop(0.25, '#7dd3fc');
+          textGrad.addColorStop(0.65, '#0284c7');
+          textGrad.addColorStop(1, '#0c4a6e');
+        } else if (gradType === 'neon_violet') {
+          textGrad.addColorStop(0, '#fdf4ff');
+          textGrad.addColorStop(0.3, '#f472b6');
+          textGrad.addColorStop(0.7, '#c084fc');
+          textGrad.addColorStop(1, '#6b21a8');
+        } else if (gradType === 'antique_bronze') {
+          textGrad.addColorStop(0, '#ffedd5');
+          textGrad.addColorStop(0.3, '#fbbf24');
+          textGrad.addColorStop(0.7, '#d97706');
+          textGrad.addColorStop(1, '#78350f');
+        } else if (gradType === 'chrome_metal') {
+          textGrad.addColorStop(0, '#ffffff');
+          textGrad.addColorStop(0.35, '#cbd5e1');
+          textGrad.addColorStop(0.7, '#64748b');
+          textGrad.addColorStop(1, '#1e293b');
+        } else if (gradType === 'sunset_glow') {
+          textGrad.addColorStop(0, '#fef3c7');
+          textGrad.addColorStop(0.4, '#f59e0b');
+          textGrad.addColorStop(0.8, '#d97706');
+          textGrad.addColorStop(1, '#7c2d12');
+        } else {
+          textGrad.addColorStop(0, '#ffffff');
+          textGrad.addColorStop(1, el.color || '#facc15');
+        }
         ctx.fillStyle = textGrad;
-      } else if (el.gradient === 'fire') {
-        const fireGrad = ctx.createLinearGradient(0, targetY - el.fontSize / 2, 0, targetY + el.fontSize / 2);
-        fireGrad.addColorStop(0, '#fef08a');
-        fireGrad.addColorStop(0.5, '#f97316');
-        fireGrad.addColorStop(1, '#ef4444');
-        ctx.fillStyle = fireGrad;
-      } else if (el.gradient === 'cyan') {
-        const cyanGrad = ctx.createLinearGradient(0, targetY - el.fontSize / 2, 0, targetY + el.fontSize / 2);
-        cyanGrad.addColorStop(0, '#e0f2fe');
-        cyanGrad.addColorStop(0.5, '#38bdf8');
-        cyanGrad.addColorStop(1, '#0284c7');
-        ctx.fillStyle = cyanGrad;
       } else {
         ctx.fillStyle = el.color || '#ffffff';
       }
@@ -893,7 +1445,9 @@ export default function ThumbnailStudio({
     bgContrast,
     bgSaturate,
     bgBlur,
-    selectedTextId
+    selectedTextId,
+    showMovieCrest,
+    crestAuraColor
   ]);
 
   // Redraw canvas on state changes
@@ -912,6 +1466,100 @@ export default function ThumbnailStudio({
     setTextElements((prev) =>
       prev.map((item) => (item.id === currentTextItem.id ? { ...item, [field]: value } : item))
     );
+  };
+
+  // Apply a 3D Khmer Title Style Preset
+  const handleApplyTitleStyle = (stylePreset) => {
+    recordHistory();
+    setAppliedTitleStyleId(stylePreset.id);
+    if (stylePreset.hasCrestBanner) {
+      setShowMovieCrest(true);
+      if (stylePreset.crestAuraColor) setCrestAuraColor(stylePreset.crestAuraColor);
+    }
+    const targetId = selectedTextId || 'title';
+    setTextElements((prev) =>
+      prev.map((item) => {
+        const isTarget = item.id === targetId || (!prev.some((p) => p.id === targetId) && item.id === 'title');
+        if (isTarget) {
+          return {
+            ...item,
+            fontFamily: stylePreset.fontFamily,
+            gradient: stylePreset.gradient,
+            color: stylePreset.color,
+            strokeColor: stylePreset.strokeColor,
+            strokeWidth: stylePreset.strokeWidth,
+            outerGlowColor: stylePreset.outerGlowColor,
+            outerGlowBlur: stylePreset.outerGlowBlur,
+            shadowColor: stylePreset.shadowColor,
+            shadowBlur: stylePreset.shadowBlur,
+            depth3d: !!stylePreset.depth3d,
+            depthColor: stylePreset.depthColor || '#350808',
+            depthOutline: stylePreset.depthOutline || '#150202',
+            depthSteps: stylePreset.depthSteps || 14,
+            pillBg: stylePreset.pillBg || 'transparent'
+          };
+        }
+        return item;
+      })
+    );
+  };
+
+  // 1-Click Replicate Sample Image Style (ឆ្លងទៅឆ្នាំ៦០ + មានប្រព័ន្ធផ្សារទំនើប + Ornate Crest)
+  const handleApplySampleReferencePreset = () => {
+    recordHistory();
+    setAppliedTitleStyleId('time_travel_gold_3d');
+    setShowMovieCrest(true);
+    setCrestAuraColor('cyan');
+
+    const mainTitleText = videoTitleVar && videoTitleVar !== 'ចំណងជើងរឿង' ? videoTitleVar : 'ឆ្លងទៅឆ្នាំ៦០';
+
+    setTextElements([
+      {
+        id: 'title',
+        text: mainTitleText,
+        fontFamily: 'Koulen',
+        fontSize: 90,
+        color: '#fff7a0',
+        gradient: 'gold_super_metal',
+        strokeColor: '#2b0707',
+        strokeWidth: 9,
+        outerGlowColor: '#ff5500',
+        outerGlowBlur: 30,
+        depth3d: true,
+        depthColor: '#350808',
+        depthOutline: '#150202',
+        depthSteps: 15,
+        shadowColor: 'rgba(255, 85, 0, 0.95)',
+        shadowBlur: 24,
+        x: 50,
+        y: 68,
+        align: 'center',
+        pillBg: 'transparent'
+      },
+      {
+        id: 'subtitle',
+        text: 'មានប្រព័ន្ធផ្សារទំនើប',
+        fontFamily: 'Moul',
+        fontSize: 44,
+        color: '#ffffff',
+        gradient: 'silver_metal',
+        strokeColor: '#3b0606',
+        strokeWidth: 7,
+        outerGlowColor: '#ef4444',
+        outerGlowBlur: 16,
+        depth3d: true,
+        depthColor: '#260404',
+        depthOutline: '#100101',
+        depthSteps: 8,
+        shadowColor: 'rgba(0,0,0,0.9)',
+        shadowBlur: 10,
+        x: 50,
+        y: 81,
+        align: 'center',
+        pillBg: 'transparent'
+      }
+    ]);
+    setSelectedTextId('title');
   };
 
   // Add a new text layer
@@ -1046,7 +1694,7 @@ export default function ThumbnailStudio({
   };
 
   // Export Canvas to PNG or JPEG
-  const handleExportImage = (format = 'png') => {
+  const handleExportImage = async (format = 'png') => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     setIsExporting(true);
@@ -1061,12 +1709,17 @@ export default function ThumbnailStudio({
       const filename = `Cover_${cleanTitle}_Ep${String(episodeNumber).padStart(2, '0')}.${format}`;
       const dataUrl = canvas.toDataURL(mime, 0.95);
 
-      const link = document.createElement('a');
-      link.download = filename;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const res = await downloadFile({
+        dataUrl,
+        filename,
+        openFolder: false
+      });
+
+      setDownloadFeedback({
+        filename,
+        savedPath: res.savedPath
+      });
+      setTimeout(() => setDownloadFeedback(null), 5000);
     } catch (err) {
       console.error('Export thumbnail error:', err);
     } finally {
@@ -1133,16 +1786,19 @@ export default function ThumbnailStudio({
         const canvas = canvasRef.current;
         if (canvas) {
           const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-          const link = document.createElement('a');
-          link.download = `Cover_Ep${String(ep).padStart(2, '0')}_${itemCleanTitle}.jpg`;
-          link.href = dataUrl;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          const fname = `Cover_Ep${String(ep).padStart(2, '0')}_${itemCleanTitle}.jpg`;
+          await downloadFile({ dataUrl, filename: fname, openFolder: false });
         }
       }
-      setBatchExportStatus(`✅ Successfully exported covers for ${videoQueue.length} videos!`);
-      setTimeout(() => setBatchExportStatus(null), 4000);
+      setBatchExportStatus(`✅ Successfully exported ${videoQueue.length} covers to your Downloads folder!`);
+      setDownloadFeedback({
+        filename: `${videoQueue.length} Episode Covers`,
+        savedPath: null
+      });
+      setTimeout(() => {
+        setBatchExportStatus(null);
+        setDownloadFeedback(null);
+      }, 6000);
     } catch (err) {
       console.error('Batch export covers error:', err);
       setBatchExportStatus('Batch generation failed.');
@@ -1162,7 +1818,18 @@ export default function ThumbnailStudio({
       const dUrl = evt.target.result;
       setRefImageDataUrl(dUrl);
       const img = new Image();
-      img.onload = () => setRefImage(img);
+      img.onload = () => {
+        setRefImage(img);
+        // Automatically set as canvas background and adapt aspect ratio
+        setBackgroundImage(img);
+        if (img.naturalHeight > img.naturalWidth) {
+          setAspectRatio('9:16');
+        } else {
+          setAspectRatio('16:9');
+        }
+        setVignetteMode('bottom_heavy');
+        setVignetteOpacity(85);
+      };
       img.src = dUrl;
     };
     reader.readAsDataURL(file);
@@ -1190,6 +1857,160 @@ export default function ThumbnailStudio({
     setRefImage(null);
     setRefImageDataUrl(null);
     setOverlaySubjectOnCanvas(false);
+    setPosterAnalysisResult(null);
+    setPosterTranslateError(null);
+  };
+
+  // Apply a specific Khmer title and optional subtitle to the Canvas
+  const applyKhmerTitleToCanvas = (khmerTitle, khmerSub = null) => {
+    if (!khmerTitle && !khmerSub) return;
+    recordHistory();
+    setTextElements((prev) => {
+      let hasTitle = false;
+      let hasSubtitle = false;
+
+      const updated = prev.map((el) => {
+        if (el.id === 'title' && khmerTitle) {
+          hasTitle = true;
+          return {
+            ...el,
+            text: khmerTitle,
+            fontFamily: el.fontFamily || 'Koulen',
+            gradient: el.gradient || 'gold'
+          };
+        }
+        if (el.id === 'subtitle' && khmerSub) {
+          hasSubtitle = true;
+          return {
+            ...el,
+            text: khmerSub
+          };
+        }
+        return el;
+      });
+
+      if (khmerTitle && !hasTitle) {
+        updated.push({
+          id: 'title',
+          text: khmerTitle,
+          fontFamily: 'Koulen',
+          fontSize: 74,
+          color: '#facc15',
+          gradient: 'gold',
+          strokeColor: '#000000',
+          strokeWidth: 8,
+          shadowColor: 'rgba(0, 0, 0, 0.9)',
+          shadowBlur: 14,
+          x: 50,
+          y: 74,
+          align: 'center',
+          pillBg: 'transparent'
+        });
+      }
+
+      if (khmerSub && !hasSubtitle) {
+        updated.push({
+          id: 'subtitle',
+          text: khmerSub,
+          fontFamily: 'Kantumruy Pro',
+          fontSize: 28,
+          color: '#f8fafc',
+          gradient: 'none',
+          strokeColor: '#000000',
+          strokeWidth: 4,
+          shadowColor: 'rgba(0,0,0,0.9)',
+          shadowBlur: 8,
+          x: 50,
+          y: 88,
+          align: 'center',
+          pillBg: 'rgba(0,0,0,0.6)'
+        });
+      }
+
+      return updated;
+    });
+  };
+
+  // Set the uploaded reference image as Canvas Background & apply dark bottom vignette to mask old text
+  const handleSetRefAsCanvasBg = () => {
+    if (!refImageDataUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      setBackgroundImage(img);
+      if (img.naturalHeight > img.naturalWidth) {
+        setAspectRatio('9:16');
+      } else {
+        setAspectRatio('16:9');
+      }
+      setVignetteMode('bottom_heavy');
+      setVignetteOpacity(85);
+    };
+    img.src = refImageDataUrl;
+  };
+
+  // Scan & Translate Poster Title from Reference Image (Chinese / Foreign -> Khmer)
+  const handleTranslatePosterTitle = async (overrideTitle = null) => {
+    const titleToUse = overrideTitle !== null ? overrideTitle : customPosterTitle;
+    setIsTranslatingPoster(true);
+    setPosterTranslateError(null);
+
+    try {
+      let res;
+      if (titleToUse && titleToUse.trim()) {
+        // Direct Free Google translation with movie title variations
+        res = await fetch('/api/thumbnail/translate-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: titleToUse.trim(),
+            source_lang: 'auto',
+            target_lang: 'km'
+          })
+        });
+      } else {
+        // Vision AI scan of poster image
+        if (!refImageDataUrl) {
+          throw new Error('Please upload an image first or enter a story title.');
+        }
+        res = await fetch('/api/thumbnail/ai-translate-poster', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_b64: refImageDataUrl,
+            gemini_api_key: geminiApiKey || null,
+            custom_title: titleToUse?.trim() || null
+          })
+        });
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to translate poster title');
+      }
+
+      const data = await res.json();
+      setPosterAnalysisResult(data);
+
+      if (data.detected_original_title && !customPosterTitle) {
+        setCustomPosterTitle(data.detected_original_title);
+      }
+
+      // Auto-apply the first suggested Khmer title & subtitle to the canvas
+      if (data.khmer_titles && data.khmer_titles.length > 0) {
+        const primaryTitle = data.khmer_titles[0];
+        const primarySub = data.khmer_subtitles && data.khmer_subtitles.length > 0 ? data.khmer_subtitles[0] : null;
+        applyKhmerTitleToCanvas(primaryTitle, primarySub);
+
+        // Auto ensure bottom vignette is on to cover old Chinese text
+        setVignetteMode('bottom_heavy');
+        setVignetteOpacity(85);
+      }
+    } catch (err) {
+      console.error('Poster translate error:', err);
+      setPosterTranslateError(err.message || 'Could not translate title. Please try typing the title name.');
+    } finally {
+      setIsTranslatingPoster(false);
+    }
   };
 
   // Generate AI Image with prompt + optional reference image
@@ -1294,8 +2115,8 @@ export default function ThumbnailStudio({
           }}
         >
           {[
-            { id: 'ai_gen', label: 'AI Cover', icon: Wand2, isSpecial: true },
-            { id: 'templates', label: 'Templates', icon: Sparkles },
+            { id: 'styles', label: 'ក្បាច់អក្សរ 3D', icon: Sparkles, isSpecial: true },
+            { id: 'poster', label: 'Poster & OCR', icon: Wand2 },
             { id: 'text', label: 'Khmer Text', icon: Type },
             { id: 'overlays', label: 'Overlays', icon: Layers },
             { id: 'batch', label: 'Batch Queue', icon: FolderDown }
@@ -1332,35 +2153,703 @@ export default function ThumbnailStudio({
 
         {/* Tab Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* TAB 0: AI COVER GENERATOR */}
-          {activeTab === 'ai_gen' && (
+          {/* TAB 1: KHMER 3D TITLE STYLES (ពុម្ពក្បាច់អក្សរខ្មែរ 3D) */}
+          {activeTab === 'styles' && (
             <>
+              {/* Header */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Sparkles size={15} style={{ color: '#c084fc' }} />
+                    ពុម្ពក្បាច់អក្សរ 3D (Khmer Movie Title Styles)
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                      color: '#c084fc',
+                      border: '1px solid rgba(168, 85, 247, 0.4)'
+                    }}
+                  >
+                    1-Click Apply
+                  </span>
+                </div>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  ចុចតែម្ដងដើម្បីដាក់ពុម្ពក្បាច់អក្សរភាពយន្ត 3D, Gradient មាស, ភ្លើងឆេះ, ឈាម, ទឹកកក លើចំណងជើងរឿង!
+                </span>
+              </div>
+
+              {/* ⭐ HERO CARD: 1-Click Match Reference Sample Style (ឆ្លងទៅឆ្នាំ៦០) */}
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.2) 0%, rgba(220, 38, 38, 0.22) 50%, rgba(6, 182, 212, 0.2) 100%)',
+                  border: '1.5px solid #facc15',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  boxShadow: '0 4px 16px rgba(250, 204, 21, 0.22)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#fef08a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Sparkles size={14} style={{ color: '#facc15' }} />
+                    🌟 ម៉ូដរឿងឆ្លងភព 3D (ដូចរូបភាពគំរូ 100%)
+                  </span>
+                  <span style={{ fontSize: '9px', fontWeight: 800, backgroundColor: '#ef4444', color: '#ffffff', padding: '2px 6px', borderRadius: '4px' }}>
+                    TOP VIRAL
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 800, color: '#facc15', fontFamily: 'Koulen, sans-serif' }}>
+                      ឆ្លងទៅឆ្នាំ៦០
+                    </span>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#f1f5f9', fontFamily: 'Moul, sans-serif' }}>
+                      មានប្រព័ន្ធផ្សារទំនើប
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#93c5fd' }}>
+                      • អក្សរមាស 3D Block + ស៊ុមភ្លើង + បដាផ្លាកយីហោរឿង + រង្វង់ពន្លឺ Cyan Plasma
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplySampleReferencePreset}
+                    style={{
+                      padding: '9px 14px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
+                      color: '#ffffff',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 10px rgba(245, 158, 11, 0.45)',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    ដាក់ម៉ូដនេះ ↵
+                  </button>
+                </div>
+              </div>
+
+              {/* Target Layer Selector */}
+              <div
+                style={{
+                  backgroundColor: 'var(--bg-sidebar)',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Type size={13} style={{ color: '#f59e0b' }} />
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-bright)' }}>
+                    ស្រទាប់អក្សរគោលដៅ:
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  {textElements.map((el, idx) => (
+                    <button
+                      key={el.id}
+                      type="button"
+                      onClick={() => setSelectedTextId(el.id)}
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: 600,
+                        border: (selectedTextId === el.id || (!selectedTextId && el.id === 'title'))
+                          ? '1px solid #c084fc'
+                          : '1px solid var(--border-light)',
+                        backgroundColor: (selectedTextId === el.id || (!selectedTextId && el.id === 'title'))
+                          ? 'rgba(168, 85, 247, 0.25)'
+                          : 'var(--bg-base)',
+                        color: (selectedTextId === el.id || (!selectedTextId && el.id === 'title'))
+                          ? '#ffffff'
+                          : 'var(--text-muted)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {el.id === 'title' ? '👑 Main Title' : (el.text ? el.text.slice(0, 10) : `Layer ${idx + 1}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3D Title Style Presets Catalog */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  ជ្រើសរើសម៉ូដក្បាច់អក្សរ ({KHMER_TITLE_STYLES.length} ម៉ូដ):
+                </span>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                  {KHMER_TITLE_STYLES.map((style) => {
+                    const isApplied = appliedTitleStyleId === style.id;
+                    return (
+                      <button
+                        key={style.id}
+                        type="button"
+                        onClick={() => handleApplyTitleStyle(style)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: isApplied ? '1.5px solid #a855f7' : '1px solid var(--border-color)',
+                          backgroundColor: isApplied ? 'rgba(168, 85, 247, 0.12)' : 'var(--bg-base)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          textAlign: 'left'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isApplied) e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.5)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isApplied) e.currentTarget.style.borderColor = 'var(--border-color)';
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span
+                              style={{
+                                fontSize: '15px',
+                                fontWeight: 700,
+                                fontFamily: `${style.fontFamily}, sans-serif`,
+                                color: style.color,
+                                textShadow: `0 2px 8px ${style.shadowColor || 'rgba(0,0,0,0.8)'}`
+                              }}
+                            >
+                              {style.name}
+                            </span>
+                            {style.depth3d && (
+                              <span
+                                style={{
+                                  fontSize: '9px',
+                                  fontWeight: 800,
+                                  padding: '1px 5px',
+                                  borderRadius: '3px',
+                                  backgroundColor: '#ef4444',
+                                  color: '#ffffff'
+                                }}
+                              >
+                                3D
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                            {style.enName} • Font: <strong style={{ color: '#e2e8f0' }}>{style.fontFamily}</strong>
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '4px 10px',
+                              borderRadius: '5px',
+                              backgroundColor: isApplied ? '#a855f7' : 'rgba(255, 255, 255, 0.08)',
+                              color: isApplied ? '#ffffff' : 'var(--text-muted)',
+                              border: isApplied ? 'none' : '1px solid var(--border-light)'
+                            }}
+                          >
+                            {isApplied ? '✓ កំពុងប្រើ' : 'ចុចប្រើ ↵'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Quick Typography Fine-Tuning */}
+              {currentTextItem && (
+                <div
+                  style={{
+                    backgroundColor: 'var(--bg-sidebar)',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px'
+                  }}
+                >
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-bright)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Sliders size={12} style={{ color: '#38bdf8' }} />
+                    កែសម្រួលលម្អិតបន្ថែម (Fine-Tuning):
+                  </span>
+
+                  {/* Ornate Movie Crest Banner & Cyan Plasma Aura Toggle */}
+                  <div
+                    style={{
+                      backgroundColor: 'var(--bg-base)',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '6px',
+                      padding: '8px 10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#fef08a' }}>
+                        បដាផ្លាកយីហោរឿង & ពន្លឺ Plasma Aura:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowMovieCrest(!showMovieCrest)}
+                        style={{
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          border: showMovieCrest ? '1px solid #10b981' : '1px solid var(--border-color)',
+                          backgroundColor: showMovieCrest ? 'rgba(16, 185, 129, 0.2)' : 'var(--bg-panel)',
+                          color: showMovieCrest ? '#34d399' : 'var(--text-muted)',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {showMovieCrest ? '✓ បើកបដា' : 'បិទបដា'}
+                      </button>
+                    </div>
+
+                    {showMovieCrest && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', paddingTop: '4px', borderTop: '1px solid var(--border-color)' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>ពណ៌ពន្លឺ Aura:</span>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {[
+                            { id: 'cyan', label: 'Cyan ⚡', color: '#00f0ff' },
+                            { id: 'gold', label: 'Gold 👑', color: '#f59e0b' },
+                            { id: 'red', label: 'Flame 🔥', color: '#ef4444' },
+                            { id: 'purple', label: 'Violet 🔮', color: '#c084fc' }
+                          ].map((a) => (
+                            <button
+                              key={a.id}
+                              type="button"
+                              onClick={() => setCrestAuraColor(a.id)}
+                              style={{
+                                padding: '2px 6px',
+                                borderRadius: '3px',
+                                fontSize: '9px',
+                                fontWeight: 700,
+                                border: crestAuraColor === a.id ? `1.5px solid ${a.color}` : '1px solid var(--border-color)',
+                                backgroundColor: crestAuraColor === a.id ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                color: a.color,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {a.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Font Family selector */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '10px', color: 'var(--text-muted)' }}>ពុម្ពអក្សរខ្មែរ (Khmer Font):</label>
+                    <select
+                      value={currentTextItem.fontFamily}
+                      onChange={(e) => updateCurrentText('fontFamily', e.target.value)}
+                      style={{
+                        backgroundColor: 'var(--bg-base)',
+                        border: '1px solid var(--border-light)',
+                        borderRadius: '5px',
+                        color: '#ffffff',
+                        padding: '6px 8px',
+                        fontSize: '12px',
+                        fontFamily: currentTextItem.fontFamily
+                      }}
+                    >
+                      <option value="Koulen">Koulen (កូលែន - ស្តង់ដារភាពយន្ត & YouTube ⭐)</option>
+                      <option value="Moul">Moul (មូល - ក្បាច់បុរាណ & ភាពយន្តធំ)</option>
+                      <option value="Battambang">Battambang (បាត់ដំបង - ច្បាស់ដិត)</option>
+                      <option value="Bokor">Bokor (បូកគោ - ក្បាច់ទាក់ទាញ)</option>
+                      <option value="Bayon">Bayon (បាយ័ន - ក្បាច់រឹងមាំ)</option>
+                      <option value="Siemreap">Siemreap (សៀមរាប)</option>
+                      <option value="Kantumruy Pro">Kantumruy Pro (កន្ទុំរុយ - ទំនើប Clean)</option>
+                    </select>
+                  </div>
+
+                  {/* 3D Depth Toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '11px', color: '#f8fafc', fontWeight: 600 }}>
+                      បែបផែន 3D Block Extrusion:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => updateCurrentText('depth3d', !currentTextItem.depth3d)}
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: '4px',
+                        border: currentTextItem.depth3d ? '1px solid #10b981' : '1px solid var(--border-color)',
+                        backgroundColor: currentTextItem.depth3d ? 'rgba(16, 185, 129, 0.2)' : 'var(--bg-base)',
+                        color: currentTextItem.depth3d ? '#34d399' : 'var(--text-muted)',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {currentTextItem.depth3d ? '✓ បើក 3D' : 'បិទ 3D'}
+                    </button>
+                  </div>
+
+                  {/* 3D Extrusion Depth Slider (When 3D is active) */}
+                  {currentTextItem.depth3d && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '8px', borderLeft: '2px solid #a855f7' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                        <span>កម្រាស់ហាប់ 3D (3D Block Depth):</span>
+                        <span>{currentTextItem.depthSteps || 14} ជាន់</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="4"
+                        max="24"
+                        value={currentTextItem.depthSteps || 14}
+                        onChange={(e) => updateCurrentText('depthSteps', parseInt(e.target.value, 10))}
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Outer Fire Blaze Glow Selector */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                      <span>ស៊ុមពន្លឺភ្លើងចាំងក្រៅ (Outer Blaze Glow):</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {[
+                        { id: '#ff5500', label: 'Flame 🔥' },
+                        { id: '#facc15', label: 'Gold 👑' },
+                        { id: '#00f0ff', label: 'Cyan ⚡' },
+                        { id: '#ef4444', label: 'Red 🩸' },
+                        { id: '', label: 'None' }
+                      ].map((g, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => updateCurrentText('outerGlowColor', g.id)}
+                          style={{
+                            padding: '3px 7px',
+                            borderRadius: '4px',
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            border: (currentTextItem.outerGlowColor === g.id || (!currentTextItem.outerGlowColor && !g.id)) ? '1.5px solid #a855f7' : '1px solid var(--border-color)',
+                            backgroundColor: (currentTextItem.outerGlowColor === g.id || (!currentTextItem.outerGlowColor && !g.id)) ? 'rgba(168, 85, 247, 0.2)' : 'var(--bg-base)',
+                            color: g.id || 'var(--text-muted)',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {g.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Font Size Slider */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                      <span>ទំហំអក្សរ (Font Size):</span>
+                      <span>{currentTextItem.fontSize}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="24"
+                      max="140"
+                      value={currentTextItem.fontSize}
+                      onChange={(e) => updateCurrentText('fontSize', parseInt(e.target.value, 10))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+
+                  {/* Stroke Outline Slider */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                      <span>កម្រាស់ស៊ុមអក្សរ (Stroke Outline):</span>
+                      <span>{currentTextItem.strokeWidth || 0}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="18"
+                      value={currentTextItem.strokeWidth || 0}
+                      onChange={(e) => updateCurrentText('strokeWidth', parseInt(e.target.value, 10))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+
+                  {/* Glow Aura Slider */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                      <span>ពន្លឺចាំងជុំវិញ (Glow Aura Blur):</span>
+                      <span>{currentTextItem.shadowBlur || 0}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="40"
+                      value={currentTextItem.shadowBlur || 0}
+                      onChange={(e) => updateCurrentText('shadowBlur', parseInt(e.target.value, 10))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Useful Tip */}
+              <div
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  border: '1px solid rgba(59, 130, 246, 0.25)',
+                  color: '#93c5fd',
+                  fontSize: '11px',
+                  lineHeight: '1.4'
+                }}
+              >
+                💡 <strong>គន្លឹះ៖</strong> អ្នកអាចចុចអូស (Drag & Drop) អក្សរនៅលើផ្ទាំងរូបភាពផ្ទាល់ដើម្បីរំកិលទីតាំង ឬចុចលើ Tab <strong>"Poster & OCR"</strong> ដើម្បីស្កេនបកប្រែចំណងជើងរឿងចិនដោយស្វ័យប្រវត្ត។
+              </div>
+            </>
+          )}
+
+          {/* TAB 2: POSTER & OCR TRANSLATION (ផ្ទាំងរូបភាពដើម & បកប្រែ) */}
+          {activeTab === 'poster' && (
+            <>
+              {/* Header with Gemini connection badge */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Wand2 size={14} style={{ color: '#c084fc' }} />
-                    AI Cover Generator
+                    Poster & AI Vision OCR
                   </span>
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => setShowGeminiKeyModal(!showGeminiKeyModal)}
                     style={{
                       fontSize: '9px',
                       fontWeight: 700,
-                      padding: '2px 6px',
+                      padding: '3px 8px',
                       borderRadius: '4px',
-                      backgroundColor: geminiApiKey ? 'rgba(16, 185, 129, 0.2)' : 'rgba(168, 85, 247, 0.2)',
-                      color: geminiApiKey ? '#34d399' : '#c084fc',
-                      border: geminiApiKey ? '1px solid #10b981' : '1px solid #a855f7'
+                      backgroundColor: isGeminiConnected || geminiApiKey ? 'rgba(16, 185, 129, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                      color: isGeminiConnected || geminiApiKey ? '#34d399' : '#c084fc',
+                      border: isGeminiConnected || geminiApiKey ? '1px solid #10b981' : '1px solid #a855f7',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
                     }}
+                    title="Click to configure Google Gemini AI"
                   >
-                    {geminiApiKey ? '✨ Gemini Imagen' : '🌐 100% Free AI'}
-                  </span>
+                    <span>{isGeminiConnected || geminiApiKey ? '🟢 Gemini Connected' : '🔑 Connect Google Account'}</span>
+                  </button>
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Just type any scene description to create custom 1080p backdrop artwork.
+                  Upload Poster ឬ Video Frame ហើយប្រើ AI Vision ស្កេនអក្សរចិន/បរទេស បកប្រែជាចំណងជើងខ្មែរភ្លាមៗ!
                 </span>
+
+                {/* Google Gemini Account Connect Drawer */}
+                {showGeminiKeyModal && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      backgroundColor: 'var(--bg-sidebar)',
+                      border: '1px solid #a855f7',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px',
+                      boxShadow: '0 4px 14px rgba(0,0,0,0.3)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>🌐</span> Google Gemini AI (Vision OCR)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowGeminiKeyModal(false)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {isGeminiConnected || geminiApiKey ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '6px 8px', borderRadius: '5px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#34d399' }}>✅ Gemini API Key Active</span>
+                            <span style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--text-muted)' }}>Key: {maskedGeminiKey}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleDisconnectGemini}
+                            style={{ padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.4)', backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', fontSize: '10px', cursor: 'pointer' }}
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                          Get your <strong>100% Free</strong> Gemini API key using your Google Account:
+                        </span>
+
+                        <a
+                          href="https://aistudio.google.com/app/apikey"
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            padding: '7px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                            color: '#93c5fd',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            textDecoration: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <span>🌐 1. Open Google AI Studio (aistudio.google.com) ↗</span>
+                        </a>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                            2. Copy your key & paste it below:
+                          </span>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <input
+                              type="password"
+                              value={tempGeminiKey}
+                              onChange={(e) => setTempGeminiKey(e.target.value)}
+                              placeholder="Paste AIzaSy... key here"
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'var(--bg-base)',
+                                border: '1px solid var(--border-light)',
+                                borderRadius: '5px',
+                                padding: '6px 8px',
+                                color: '#ffffff',
+                                fontSize: '11px',
+                                fontFamily: 'monospace'
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const text = await navigator.clipboard.readText();
+                                  if (text && text.trim().startsWith('AIza')) {
+                                    setTempGeminiKey(text.trim());
+                                    handleSaveGeminiKey(text.trim());
+                                  } else if (text) {
+                                    setTempGeminiKey(text.trim());
+                                  }
+                                } catch (e) {
+                                  console.warn(e);
+                                }
+                              }}
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: '5px',
+                                border: '1px solid var(--border-light)',
+                                backgroundColor: 'var(--bg-panel)',
+                                color: 'var(--text-bright)',
+                                fontSize: '10px',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
+                              }}
+                              title="Paste from clipboard"
+                            >
+                              📋 Paste
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isVerifyingGeminiKey}
+                              onClick={() => handleSaveGeminiKey(tempGeminiKey)}
+                              style={{
+                                padding: '6px 14px',
+                                borderRadius: '5px',
+                                border: 'none',
+                                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                color: '#ffffff',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                cursor: isVerifyingGeminiKey ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {isVerifyingGeminiKey ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                              <span>{isVerifyingGeminiKey ? 'Verifying...' : 'Connect'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {geminiVerifyError && (
+                          <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', padding: '6px 8px', borderRadius: '5px', fontSize: '10px', color: '#fca5a5' }}>
+                            {geminiVerifyError}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {geminiSuccessNotice && (
+                      <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', padding: '6px 8px', borderRadius: '5px', fontSize: '10px', color: '#6ee7b7' }}>
+                        {geminiSuccessNotice}
+                      </div>
+                    )}
+
+                    {onOpenSettings && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '6px', borderTop: '1px solid var(--border-color)' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowGeminiKeyModal(false);
+                            onOpenSettings();
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#38bdf8',
+                            fontSize: '10px',
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <span>⚙️ Manage AI Key & Storage Cache in Studio Settings ↗</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Optional Reference / Original Image Upload Section */}
+              {/* Poster Upload / Video Frame Source Section */}
               <div
                 style={{
                   backgroundColor: 'var(--bg-sidebar)',
@@ -1375,7 +2864,7 @@ export default function ThumbnailStudio({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-bright)', display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <Camera size={13} style={{ color: '#c084fc' }} />
-                    Original Image (Photo / Video Frame)
+                    Original Poster (រូបភាព Poster ឬ Video Frame)
                   </span>
                   {refImageDataUrl && (
                     <button
@@ -1389,27 +2878,236 @@ export default function ThumbnailStudio({
                 </div>
 
                 {refImageDataUrl ? (
-                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <img
-                      src={refImageDataUrl}
-                      alt="Reference"
-                      style={{
-                        width: '74px',
-                        height: '46px',
-                        objectFit: 'cover',
-                        borderRadius: '5px',
-                        border: '1px solid #a855f7',
-                        flexShrink: 0
-                      }}
-                    />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#c084fc' }}>
-                        Image Loaded for AI Design
-                      </span>
-                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                        AI will fuse this character with your prompt scene.
-                      </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                      <img
+                        src={refImageDataUrl}
+                        alt="Poster Reference"
+                        style={{
+                          width: '74px',
+                          height: '56px',
+                          objectFit: 'cover',
+                          borderRadius: '5px',
+                          border: '1px solid #a855f7',
+                          flexShrink: 0
+                        }}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#c084fc' }}>
+                          Poster Loaded on Canvas
+                        </span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                          AI Vision អាចអានអក្សរចិនលើ Poster នេះ និងបកប្រែជាចំណងជើងខ្មែរ។
+                        </span>
+                      </div>
                     </div>
+
+                    {/* Fit & Set as Background button */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(16, 185, 129, 0.12)', border: '1px solid #10b981', padding: '6px 8px', borderRadius: '5px', fontSize: '10px', color: '#6ee7b7' }}>
+                      <span>✅ Poster Placed on Canvas ({aspectRatio})</span>
+                      <button
+                        type="button"
+                        onClick={handleSetRefAsCanvasBg}
+                        style={{ background: 'none', border: 'none', color: '#a7f3d0', cursor: 'pointer', textDecoration: 'underline', fontSize: '10px', fontWeight: 600 }}
+                      >
+                        Re-Fit Background
+                      </button>
+                    </div>
+
+                    {/* Manual Title input (Chinese / English) */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label style={{ fontSize: '10px', fontWeight: 600, color: '#f8fafc' }}>
+                          ចំណងជើងដើម (ចិន / Foreign Title):
+                        </label>
+                        <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Type or paste</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <input
+                          type="text"
+                          value={customPosterTitle}
+                          onChange={(e) => setCustomPosterTitle(e.target.value)}
+                          placeholder="e.g. 中奖两个亿，我在县城当豪门！"
+                          style={{
+                            flex: 1,
+                            backgroundColor: 'var(--bg-base)',
+                            border: '1px solid var(--border-light)',
+                            borderRadius: '5px',
+                            padding: '5px 8px',
+                            color: '#ffffff',
+                            fontSize: '11px',
+                            minWidth: 0
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleTranslatePosterTitle();
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleTranslatePosterTitle()}
+                          disabled={isTranslatingPoster}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '5px',
+                            border: 'none',
+                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                            color: '#ffffff',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: isTranslatingPoster ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            whiteSpace: 'nowrap'
+                          }}
+                          title="Translate Chinese/foreign title into Khmer"
+                        >
+                          {isTranslatingPoster ? <Loader2 size={12} className="animate-spin" /> : <Languages size={12} />}
+                          <span>Translate</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Auto-Scan Button using Gemini Vision OCR */}
+                    <button
+                      type="button"
+                      onClick={() => handleTranslatePosterTitle('')}
+                      disabled={isTranslatingPoster}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid #a855f7',
+                        background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+                        color: '#ffffff',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        cursor: isTranslatingPoster ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 2px 8px rgba(168, 85, 247, 0.35)'
+                      }}
+                    >
+                      {isTranslatingPoster ? (
+                        <>
+                          <Loader2 size={13} className="animate-spin" />
+                          <span>Gemini AI Vision កំពុងស្កេនរូបភាព (2-3s)...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={13} />
+                          <span>🔍 Auto-Scan Image with AI Vision (Gemini)</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Translation Error Display */}
+                    {posterTranslateError && (
+                      <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', padding: '6px 8px', borderRadius: '5px', fontSize: '10px', color: '#fca5a5' }}>
+                        {posterTranslateError}
+                      </div>
+                    )}
+
+                    {/* Analysis Result Card with Clickable Khmer Titles */}
+                    {posterAnalysisResult && (
+                      <div
+                        style={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.35)',
+                          border: '1px solid #a855f7',
+                          borderRadius: '6px',
+                          padding: '10px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>អក្សរចិនដើមដែលស្កេនឃើញ:</span>
+                            <span style={{ fontSize: '9px', backgroundColor: 'rgba(168, 85, 247, 0.25)', color: '#c084fc', padding: '1px 5px', borderRadius: '3px' }}>
+                              {posterAnalysisResult.detected_language || 'Chinese'}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc' }}>
+                            {posterAnalysisResult.detected_original_title || 'Detected Title'}
+                            {posterAnalysisResult.english_title ? ` (${posterAnalysisResult.english_title})` : ''}
+                          </span>
+                        </div>
+
+                        {/* Suggested Khmer Titles */}
+                        {posterAnalysisResult.khmer_titles && posterAnalysisResult.khmer_titles.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: '#fbbf24' }}>
+                              👉 ចុចយកចំណងជើងរឿងខ្មែរដាក់លើរូប (Click to Apply):
+                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {posterAnalysisResult.khmer_titles.map((kt, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => applyKhmerTitleToCanvas(kt, posterAnalysisResult.khmer_subtitles?.[0])}
+                                  style={{
+                                    textAlign: 'left',
+                                    padding: '6px 8px',
+                                    borderRadius: '5px',
+                                    backgroundColor: 'var(--bg-panel)',
+                                    border: '1px solid rgba(250, 204, 21, 0.35)',
+                                    color: '#facc15',
+                                    fontSize: '12px',
+                                    fontFamily: 'Koulen, sans-serif',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  title="Click to apply this title to your canvas"
+                                >
+                                  <span>{kt}</span>
+                                  <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'sans-serif' }}>Apply ↵</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Suggested Khmer Subtitle Hooks */}
+                        {posterAnalysisResult.khmer_subtitles && posterAnalysisResult.khmer_subtitles.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 600, color: '#93c5fd' }}>
+                              💬 ពាក្យទាក់ទាញ (Hook / Subtitle):
+                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              {posterAnalysisResult.khmer_subtitles.map((ks, sIdx) => (
+                                <button
+                                  key={sIdx}
+                                  type="button"
+                                  onClick={() => applyKhmerTitleToCanvas(null, ks)}
+                                  style={{
+                                    textAlign: 'left',
+                                    padding: '4px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'var(--bg-base)',
+                                    border: '1px solid rgba(147, 197, 253, 0.25)',
+                                    color: '#e2e8f0',
+                                    fontSize: '10px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                  }}
+                                  title="Click to place subtitle hook"
+                                >
+                                  <span>{ks}</span>
+                                  <span style={{ fontSize: '8px', color: 'var(--text-muted)' }}>Use ↵</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -1418,7 +3116,7 @@ export default function ThumbnailStudio({
                       onClick={handleSetCurrentFrameAsRef}
                       disabled={!videoUrl}
                       style={{
-                        padding: '6px 8px',
+                        padding: '8px',
                         borderRadius: '6px',
                         border: '1px solid var(--border-light)',
                         backgroundColor: 'var(--bg-base)',
@@ -1432,13 +3130,13 @@ export default function ThumbnailStudio({
                       }}
                       title="Capture active video player frame as original reference"
                     >
-                      <Camera size={12} style={{ color: '#2563eb' }} />
+                      <Camera size={13} style={{ color: '#2563eb' }} />
                       <span>Use Video Frame</span>
                     </button>
 
                     <label
                       style={{
-                        padding: '6px 8px',
+                        padding: '8px',
                         borderRadius: '6px',
                         border: '1px solid var(--border-light)',
                         backgroundColor: 'var(--bg-base)',
@@ -1451,271 +3149,15 @@ export default function ThumbnailStudio({
                         cursor: 'pointer'
                       }}
                     >
-                      <Upload size={12} style={{ color: '#a855f7' }} />
-                      <span>Upload Photo</span>
+                      <Upload size={13} style={{ color: '#a855f7' }} />
+                      <span>Upload Poster</span>
                       <input type="file" accept="image/*" onChange={handleUploadRefImage} style={{ display: 'none' }} />
                     </label>
                   </div>
                 )}
-
-                {/* Subject Overlay Toggle & Controls (When image is present) */}
-                {refImageDataUrl && (
-                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '8px', marginTop: '2px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-bright)', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={overlaySubjectOnCanvas}
-                        onChange={(e) => setOverlaySubjectOnCanvas(e.target.checked)}
-                      />
-                      <span style={{ fontWeight: 600 }}>Place Subject on Canvas (Character Layer)</span>
-                    </label>
-
-                    {overlaySubjectOnCanvas && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '16px' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                          <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
-                              <span>Size:</span>
-                              <span>{subjectScale}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="40"
-                              max="160"
-                              value={subjectScale}
-                              onChange={(e) => setSubjectScale(parseInt(e.target.value, 10))}
-                              style={{ width: '100%' }}
-                            />
-                          </div>
-                          <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
-                              <span>X Position:</span>
-                              <span>{subjectX}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="10"
-                              max="90"
-                              value={subjectX}
-                              onChange={(e) => setSubjectX(parseInt(e.target.value, 10))}
-                              style={{ width: '100%' }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Character Glow selector */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Character Glow:</span>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            {[
-                              { id: 'none', label: 'None' },
-                              { id: 'gold', label: 'Gold' },
-                              { id: 'cyan', label: 'Cyan' },
-                              { id: 'red', label: 'Red' }
-                            ].map((g) => (
-                              <button
-                                key={g.id}
-                                type="button"
-                                onClick={() => setSubjectGlow(g.id)}
-                                style={{
-                                  padding: '2px 6px',
-                                  borderRadius: '3px',
-                                  fontSize: '9px',
-                                  fontWeight: 600,
-                                  border: subjectGlow === g.id ? '1px solid #c084fc' : '1px solid var(--border-color)',
-                                  backgroundColor: subjectGlow === g.id ? 'rgba(168,85,247,0.3)' : 'var(--bg-base)',
-                                  color: '#ffffff',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                {g.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
-              {/* Prompt Input Box */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    Scene Prompt:
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setAiPrompt('')}
-                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '10px', cursor: 'pointer' }}
-                  >
-                    Clear
-                  </button>
-                </div>
-                <textarea
-                  rows={3}
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="e.g. Ancient Angkor temple at midnight with mystical glowing torches and full moon..."
-                  style={{
-                    backgroundColor: 'var(--bg-base)',
-                    border: '1px solid var(--border-light)',
-                    borderRadius: '6px',
-                    color: '#ffffff',
-                    padding: '8px 10px',
-                    fontSize: '12px',
-                    lineHeight: '1.4',
-                    resize: 'vertical'
-                  }}
-                />
-              </div>
-
-              {/* 1-Click Inspiration Prompt Chips */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Quick Inspiration Prompts:</span>
-                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                  {[
-                    { label: '💥 Action Explosion', prompt: 'heroic warrior standing before massive fire explosion, smoke particles, cinematic lighting, 8k', style: 'action' },
-                    { label: '👻 Khmer Horror', prompt: 'ancient Angkor Wat stone ruins at midnight, eerie green mist, full moon, haunted atmosphere', style: 'horror' },
-                    { label: '🌆 Cyberpunk Neon', prompt: 'cyberpunk warrior with glowing neon sword on dark wet futuristic city street, rain reflections', style: 'cyberpunk' },
-                    { label: '🎭 Romantic Sunset', prompt: 'romantic couple silhouettes against golden sunset sky on ocean cliff, warm cinematic glow', style: 'romance' },
-                    { label: '🐉 Fantasy Dragon', prompt: 'giant mythical gold dragon soaring above ancient pagoda mountain with lightning', style: 'khmer_myth' }
-                  ].map((chip) => (
-                    <button
-                      key={chip.label}
-                      type="button"
-                      onClick={() => {
-                        setAiPrompt(chip.prompt);
-                        setAiStyle(chip.style);
-                      }}
-                      style={{
-                        padding: '3px 7px',
-                        borderRadius: '4px',
-                        backgroundColor: 'var(--bg-base)',
-                        border: '1px solid var(--border-color)',
-                        color: 'var(--text-primary)',
-                        fontSize: '10px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#c084fc')}
-                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Style Selector Grid */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Visual Style:</span>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-                  {[
-                    { id: 'cinematic', label: '🎬 Cinematic' },
-                    { id: 'action', label: '💥 Action/Fire' },
-                    { id: 'horror', label: '👻 Horror/Dark' },
-                    { id: 'romance', label: '🎭 Romance' },
-                    { id: 'cyberpunk', label: '🚀 Cyberpunk' },
-                    { id: 'khmer_myth', label: '🏛️ Khmer Myth' }
-                  ].map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setAiStyle(s.id)}
-                      style={{
-                        padding: '6px 4px',
-                        borderRadius: '5px',
-                        fontSize: '10px',
-                        fontWeight: 600,
-                        border: aiStyle === s.id ? '1px solid #c084fc' : '1px solid var(--border-color)',
-                        backgroundColor: aiStyle === s.id ? 'rgba(168, 85, 247, 0.2)' : 'var(--bg-base)',
-                        color: aiStyle === s.id ? '#c084fc' : 'var(--text-muted)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Primary Generate AI Button */}
-              <button
-                type="button"
-                onClick={() => handleGenerateAiCover()}
-                disabled={isGeneratingAi || !aiPrompt.trim()}
-                className="btn-primary"
-                style={{
-                  padding: '10px',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  background: isGeneratingAi
-                    ? 'var(--bg-base)'
-                    : 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
-                  boxShadow: isGeneratingAi ? 'none' : '0 4px 14px rgba(124, 58, 237, 0.4)',
-                  cursor: isGeneratingAi || !aiPrompt.trim() ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {isGeneratingAi ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin" />
-                    <span>{refImageDataUrl ? 'Redesigning Image with AI (3-6s)...' : 'Generating AI Artwork (3-6s)...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Wand2 size={14} />
-                    <span>{refImageDataUrl ? '✨ Redesign Image with AI Prompt' : 'Generate AI Cover Backdrop'}</span>
-                  </>
-                )}
-              </button>
-
-              {/* AI Status / Engine Notice */}
-              {aiEngineNotice && (
-                <div
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                    border: '1px solid #10b981',
-                    color: '#34d399',
-                    fontSize: '11px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  <CheckCircle2 size={13} />
-                  <span>{aiEngineNotice}</span>
-                </div>
-              )}
-
-              {/* Error Notice */}
-              {aiError && (
-                <div
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid #ef4444',
-                    color: '#f87171',
-                    fontSize: '11px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  <AlertCircle size={13} />
-                  <span>{aiError}</span>
-                </div>
-              )}
-
-              {/* AI Bonus: Auto Suggest Khmer Titles & Hooks */}
+              {/* Poster Masking & Vignette Controls (To mask foreign text) */}
               <div
                 style={{
                   backgroundColor: 'var(--bg-sidebar)',
@@ -1728,80 +3170,117 @@ export default function ThumbnailStudio({
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-bright)' }}>
-                    💡 Auto-Suggest Khmer Titles
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-bright)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <SlidersHorizontal size={13} style={{ color: '#f59e0b' }} />
+                    បាំងអក្សរបរទេសចាស់ (Bottom Dark Vignette Mask)
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleSuggestKhmerTitles}
-                    disabled={isSuggestingTitles || !aiPrompt.trim()}
-                    style={{
-                      background: 'none',
-                      border: '1px solid rgba(192, 132, 252, 0.4)',
-                      borderRadius: '4px',
-                      color: '#c084fc',
-                      fontSize: '10px',
-                      fontWeight: 600,
-                      padding: '2px 6px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    {isSuggestingTitles ? <RefreshCw size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                    <span>Suggest Titles</span>
-                  </button>
+                  <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 600 }}>{vignetteOpacity}%</span>
                 </div>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                  Click any suggested title below to set your canvas headline:
+                  បន្ថែមកម្រាស់ស្រមោលខ្មៅនៅផ្នែកខាងក្រោម ដើម្បីបាំងអក្សរចិនដើម និងធ្វើឱ្យអក្សរខ្មែរ 3D មើលឃើញច្បាស់ដិត!
                 </span>
 
-                {aiSuggestedTitles.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    {aiSuggestedTitles.map((t, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          updateCurrentText('text', t);
-                          setVideoTitleVar(t);
-                        }}
-                        style={{
-                          padding: '6px 8px',
-                          borderRadius: '5px',
-                          border: '1px solid var(--border-light)',
-                          backgroundColor: 'var(--bg-base)',
-                          color: '#facc15',
-                          fontFamily: 'Koulen, sans-serif',
-                          fontSize: '12px',
-                          textAlign: 'left',
-                          cursor: 'pointer'
-                        }}
-                        title="Click to apply to canvas headline"
-                      >
-                        {t}
-                      </button>
-                    ))}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
+                  {[
+                    { id: 'bottom_heavy', label: 'Bottom' },
+                    { id: 'cinematic', label: 'Cinema' },
+                    { id: 'full_dark', label: 'Full' },
+                    { id: 'none', label: 'None' }
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setVignetteMode(m.id)}
+                      style={{
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: 600,
+                        border: vignetteMode === m.id ? '1px solid #ef4444' : '1px solid var(--border-color)',
+                        backgroundColor: vignetteMode === m.id ? 'rgba(239, 68, 68, 0.2)' : 'var(--bg-base)',
+                        color: vignetteMode === m.id ? '#f87171' : 'var(--text-muted)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                    <span>កម្រិតភាពងងឹត (Vignette Darkness):</span>
+                    <span>{vignetteOpacity}%</span>
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleSuggestKhmerTitles}
-                    style={{
-                      padding: '8px',
-                      borderRadius: '5px',
-                      border: '1px dashed var(--border-light)',
-                      backgroundColor: 'transparent',
-                      color: 'var(--text-muted)',
-                      fontSize: '11px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Click to generate catchy Khmer titles for this prompt
-                  </button>
-                )}
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={vignetteOpacity}
+                    onChange={(e) => setVignetteOpacity(parseInt(e.target.value, 10))}
+                    style={{ width: '100%' }}
+                  />
+                </div>
               </div>
+
+              {/* Subject Cutout Overlay (Optional) */}
+              {refImageDataUrl && (
+                <div
+                  style={{
+                    backgroundColor: 'var(--bg-sidebar)',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}
+                >
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-bright)', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={overlaySubjectOnCanvas}
+                      onChange={(e) => setOverlaySubjectOnCanvas(e.target.checked)}
+                    />
+                    <span style={{ fontWeight: 600 }}>Place Character Subject Layer on Canvas</span>
+                  </label>
+
+                  {overlaySubjectOnCanvas && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '16px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                            <span>Size:</span>
+                            <span>{subjectScale}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="40"
+                            max="160"
+                            value={subjectScale}
+                            onChange={(e) => setSubjectScale(parseInt(e.target.value, 10))}
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                            <span>X Position:</span>
+                            <span>{subjectX}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="10"
+                            max="90"
+                            value={subjectX}
+                            onChange={(e) => setSubjectX(parseInt(e.target.value, 10))}
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -2792,11 +4271,22 @@ export default function ThumbnailStudio({
 
             <button
               type="button"
+              onClick={() => openFileLocation(null)}
+              className="btn-secondary"
+              style={{ padding: '6px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+              title="Open Downloads & Exports folder in Windows Explorer"
+            >
+              <FolderOpen size={13} style={{ color: '#f59e0b' }} />
+              <span>Folder</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => handleExportImage('jpeg')}
               disabled={isExporting}
               className="btn-secondary"
               style={{ padding: '6px 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}
-              title="Download as standard JPEG"
+              title="Download as standard JPEG to Downloads folder"
             >
               <Download size={13} />
               <span>JPG</span>
@@ -2817,7 +4307,7 @@ export default function ThumbnailStudio({
                 background: 'linear-gradient(135deg, #ef4444 0%, #ea580c 100%)',
                 boxShadow: '0 2px 10px rgba(239, 68, 68, 0.4)'
               }}
-              title="Download Ultra High-Def 1080p PNG Cover"
+              title="Download Ultra High-Def 1080p PNG Cover directly to Downloads folder"
             >
               <Download size={13} />
               <span>Download 1080p PNG</span>
@@ -2837,6 +4327,53 @@ export default function ThumbnailStudio({
             position: 'relative'
           }}
         >
+          {/* Download Success Floating Banner */}
+          {downloadFeedback && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '24px',
+                zIndex: 150,
+                backgroundColor: 'rgba(6, 78, 59, 0.95)',
+                backdropFilter: 'blur(8px)',
+                border: '1px solid #10b981',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                color: '#ecfdf5',
+                fontSize: '12px',
+                animation: 'fadeIn 0.2s ease-out'
+              }}
+            >
+              <CheckCircle2 size={16} style={{ color: '#34d399' }} />
+              <span>Saved to Downloads: <strong>{downloadFeedback.filename}</strong></span>
+              <button
+                type="button"
+                onClick={() => openFileLocation(downloadFeedback.filename, downloadFeedback.savedPath)}
+                style={{
+                  backgroundColor: '#059669',
+                  border: 'none',
+                  borderRadius: '5px',
+                  color: '#ffffff',
+                  fontSize: '11px',
+                  padding: '3px 8px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <FolderOpen size={12} />
+                <span>Open Folder</span>
+              </button>
+            </div>
+          )}
+
           {/* Main Visual Canvas Container with Drop Shadow */}
           <div
             style={{

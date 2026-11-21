@@ -1,7 +1,7 @@
 # MK Movie - Subtitle & Dubbing Studio
 
 > **Khmer AI Subtitle, Dubbing & Video Hard-Sub Studio**  
-> An all-in-one desktop and web application for automated video transcription (OpenAI Whisper & faster-whisper), AI translation to Khmer, pitch-matched Edge-TTS voice dubbing, vocal separation (UVR AI), custom watermark branding, and hardware-accelerated (AMD AMF / NVIDIA NVENC / CPU) multi-episode batch video rendering.
+> An all-in-one desktop and web application for automated video transcription (OpenAI Whisper & faster-whisper), AI translation to Khmer (Google Translate & Gemini 2.5/3.0 Flash), pitch-matched Edge-TTS voice dubbing, vocal separation (UVR AI), 1-click 1080p frame capture for Photoshop/Canva, custom watermark branding, and hardware-accelerated (AMD AMF / NVIDIA NVENC / CPU) multi-episode batch video rendering.
 
 ---
 
@@ -43,9 +43,10 @@ Once `setup.bat` finishes, every feature in the studio is fully operational:
 | Feature / Tool | Status After `setup.bat` | Hardware Acceleration |
 | :--- | :--- | :--- |
 | **🎙️ Speech-to-Text (STT)** | **Ready** — OpenAI Whisper & faster-whisper with Silero VAD | NVIDIA CUDA (4x speedup) or CPU INT8 |
-| **🌐 Translation to Khmer** | **Ready** — 100% Free Google Translate built-in (no API key needed) | Cloud API (Instant) |
+| **🌐 Translation to Khmer** | **Ready** — 100% Free Google Translate + Google Gemini Flash API | Cloud API (Instant) |
 | **🗣️ Khmer Voice Dubbing** | **Ready** — Microsoft Edge-TTS Neural voices (`Piseth` & `Sreymom`) | Auto Lip-Sync Time-Stretching |
 | **🎵 UVR Vocal Separation** | **Ready** — MDX-Net AI Vocal & Background Music isolation | AI-Edge LiteRT / TFLite engine |
+| **📸 1-Click Frame Capture** | **Ready** — 1080p/4K frame snapshot + auto-copy to Clipboard | Web Canvas & Clipboard API |
 | **🎬 Video Hardsub Burning** | **Ready** — High-speed video rendering with custom watermark & styles | AMD AMF (`h264_amf`) / NVIDIA NVENC / CPU |
 | **🎞️ Batch Concat Demuxer** | **Ready** — Multi-episode merging without re-encoding in seconds | FFmpeg Stream Copy |
 | **🖥️ Desktop Application** | **Ready** — Lightweight native Windows window with splash screen | Microsoft Edge WebView2 |
@@ -62,7 +63,7 @@ run.bat
 ```
 *(The launcher automatically detects your `venv` virtual environment and opens the clean native desktop window)*.
 
-Or run from an activated terminal:
+Or run directly from an activated terminal:
 ```powershell
 python desktop_app.py
 ```
@@ -86,45 +87,29 @@ If you prefer using your default browser (Chrome, Edge, Brave) or want live code
    ```
 
 3. Open your browser and navigate to:  
-   👉 **`http://localhost:5173`**
+   👉 **`http://localhost:5173`** (or `http://127.0.0.1:8800` for backend production bundle)
 
 ---
 
-## ⚙️ Optional Configuration (`.env`)
+## ⚙️ Google Gemini AI Integration & Settings
 
-The app works immediately with **100% free Google Translate** (no API key required).
+The studio comes with **100% free built-in Google Translate** (no API key required).
 
-If you want to use **Google Gemini 2.5 Flash** for enhanced context-aware movie subtitle translation, create a `.env` file in the project root:
+If you want enhanced context-aware movie subtitle translations using Google Gemini:
+1. Click **Settings (⚙️)** in the studio top bar.
+2. Enter your **Google Gemini API Key** (Get free from [aistudio.google.com](https://aistudio.google.com/app/apikey)).
+3. The studio automatically verifies the key and enables smart fallback across Gemini models:
+   - `gemini-2.5-flash`
+   - `gemini-3-flash-preview`
+   - `gemini-3.1-flash-lite-preview`
+4. The key is securely stored in local cache and `.env` for seamless offline/online workflows.
 
 ```ini
-# .env (in project root)
-
-# Optional: Google Gemini API Key for smart movie translation
+# .env (in project root - auto-updated by Settings Modal)
 GEMINI_API_KEY=your_gemini_api_key_here
-
-# Optional: Custom host and port (default is 127.0.0.1:8800)
 MK_HOST=127.0.0.1
 MK_PORT=8800
 MK_DEBUG=True
-```
-
----
-
-## 📦 Building Standalone Executable (.exe)
-
-You can package the entire studio into a portable standalone Windows executable that can run on any Windows 10/11 PC without installing Python, Node.js, or FFmpeg:
-
-```powershell
-# Run the automated build script
-.\build_desktop_exe.bat
-
-# OR compile via Python CLI
-python desktop_app.py --build
-```
-
-The compiled standalone executable and bundled assets will be placed in:
-```text
-dist\MK-Subtitle-Studio\MK-Subtitle-Studio.exe
 ```
 
 ---
@@ -133,25 +118,27 @@ dist\MK-Subtitle-Studio\MK-Subtitle-Studio.exe
 
 ```mermaid
 graph LR
-    A["1. Upload Video\n(MP4, MKV, MOV, etc.)"] --> B["2. AI Whisper STT\n(Voice-to-Text)"]
+    A["1. Upload Video\n(MP4, MKV, MOV)"] --> B["2. AI Whisper STT\n(Voice-to-Text)"]
     B --> C["3. Gender Detection\n(Male vs Female F0 pitch)"]
-    C --> D["4. Google Translate\n(Khmer, English, etc.)"]
-    D --> E["5. Edge-TTS Dubbing\n(Auto Speed Time-Stretch)"]
-    E --> F["6. Timeline Synchronizer\n(Match waveform & video)"]
-    F --> G["7. Export Video\n(Burn Subtitles / MP4 / SRT)"]
+    C --> D["4. AI Translation\n(Khmer, English, etc.)"]
+    D --> E["5. Edge-TTS Dubbing\n(Auto Speed Stretch)"]
+    E --> F["6. Timeline Synchronizer\n(Waveform & Subtitle Table)"]
+    F --> G["7. Export / Hardsub\n(Burn Subtitles / MP4 / SRT)"]
+    A -.-> H["📸 1-Click Frame Capture\n(Auto-Copy for Photoshop/Canva)"]
 ```
 
 | Feature | Description |
 | :--- | :--- |
 | **⚡ faster-whisper (CTranslate2)** | Ultra-fast STT engine with **4x speedup**, INT8 CPU/CUDA acceleration, Silero VAD filtering, and seamless OpenAI Whisper fallback. |
+| **📸 1-Click Frame Capture** | Dedicated `📸 ថតប្លង់ (Capture)` button on video player. Instantly captures native high-res 1080p/4K PNG frames and copies them to the OS clipboard for quick `Ctrl + V` pasting into Photoshop or Canva. |
 | **🎛️ Smart BGM Auto-Ducking** | Dynamic FFmpeg sidechain compression that smoothly lowers background music/audio during speech and automatically restores full volume during pauses. |
 | **👥 Voice Gender Classification** | Analyzes fundamental vocal pitch (F0) to assign lines to **Male** or **Female** speakers automatically. |
-| **🌐 Free Instant Translation** | Translate subtitles instantly across 50+ languages (Khmer, English, Chinese, Vietnamese, Thai, Japanese, etc.) with rate-limiting safety. |
+| **🌐 Free & Gemini Translation** | Translate subtitles instantly across 50+ languages with rate-limiting safety, plus optional Gemini AI Vision for foreign movie title translations. |
 | **🗣️ Multi-Voice Edge-TTS** | High quality neural TTS dubbing with automatic audio time-stretching so speech matches the duration of each subtitle line. |
 | **⏱️ Interactive Timeline** | Precision subtitle synchronization, waveform view, drag-to-resize, and split/merge lines. |
-| **🎞️ Hardsub Video Rendering** | Fast FFmpeg video encoding with customizable subtitle styling (font size, colors, outlines, bottom/top placement). |
-| **📁 Universal Export** | Export to `.srt`, `.vtt`, `.ass`, `.txt`, standalone dubbed `.mp3`, or hardsubbed `.mp4`. |
-| **⏳ Long-Form Video Support** | Efficient streaming and chunking handles short clips and long videos (1 hour+) without memory leaks. |
+| **🎞️ Hardsub Video Rendering** | Fast FFmpeg video encoding with customizable subtitle styling (font size, colors, outlines, bottom/top placement, AMD AMF & NVIDIA NVENC). |
+| **📁 Universal Export & Save** | Export to `.srt`, `.vtt`, `.ass`, `.txt`, standalone dubbed `.mp3`, or hardsubbed `.mp4` with native Save As dialogs. |
+| **🧹 1-Click Storage Purge** | In-app disk usage tracker in Workspace Tools with a 1-click **Purge** button to keep your drive clean from temporary video uploads. |
 
 ---
 
@@ -162,7 +149,6 @@ mk_subtitle/
 ├── setup.bat                     # ⚡ 1-Click All-in-One Automated Setup (Run this first!)
 ├── setup.ps1                     # Complete PowerShell setup engine
 ├── run.bat                       # Quick desktop launcher (venv-aware)
-├── build_desktop_exe.bat         # Standalone .exe compiler
 ├── desktop_app.py                # Native PyWebView desktop launcher
 ├── requirements.txt              # Backend Python dependencies
 ├── backend/
@@ -175,11 +161,12 @@ mk_subtitle/
 │   │       ├── translator.py     # Gemini & Google Translate services
 │   │       ├── tts_engine.py     # Microsoft Edge-TTS Khmer synthesis
 │   │       ├── vocal_separator.py# UVR vocal & BGM isolation
+│   │       ├── image_generator.py# Gemini Vision poster translation
 │   │       └── ffmpeg_runner.py  # Hard-sub burning, AMF encoder & concat
 ├── frontend/
 │   ├── src/
-│   │   ├── components/           # UI components (Timeline, Queue, ExportModal)
-│   │   ├── utils/                # Time formatting & helpers
+│   │   ├── components/           # UI components (Timeline, Queue, ExportModal, SettingsModal)
+│   │   ├── utils/                # Time formatting, file downloader & theme helpers
 │   │   ├── App.jsx               # Main React Studio layout & state
 │   │   └── main.jsx              # React DOM entry
 │   ├── dist/                     # Compiled production UI bundle (served by backend)

@@ -4,8 +4,11 @@ import shutil
 import uuid
 import re
 import asyncio
+import json
 import subprocess
 import urllib.parse
+import base64
+import httpx
 from pathlib import Path
 from typing import List, Optional
 from pydantic import BaseModel
@@ -53,7 +56,7 @@ from .services.translator import (
 from .services.whisper_stt import transcribe_video_whisper
 from .services.vocal_separator import separate_audio_vocals
 from .services.ffmpeg_runner import probe_video, render_and_burn_video, get_render_progress, concat_videos, split_video, render_mirror_video, resolve_video_file
-from .services.image_generator import generate_ai_cover_image, suggest_khmer_titles
+from .services.image_generator import generate_ai_cover_image, suggest_khmer_titles, extract_and_translate_poster_title
 
 app = FastAPI(
     title="mk_subtitle API",
@@ -249,7 +252,12 @@ async def download_export(
     if delete_after and background_tasks:
         background_tasks.add_task(_safe_remove, path)
 
-    return FileResponse(path, filename=path.name, media_type="video/mp4")
+    return FileResponse(
+        path,
+        filename=path.name,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{urllib.parse.quote(path.name)}"'}
+    )
 
 @app.post("/api/exports/open-folder")
 async def open_exports_folder_endpoint():
@@ -258,6 +266,104 @@ async def open_exports_folder_endpoint():
         if sys.platform == "win32":
             subprocess.Popen(["explorer.exe", str(EXPORTS_DIR)], creationflags=SUBPROCESS_FLAGS)
             return {"status": "success", "path": str(EXPORTS_DIR)}
+        return {"status": "unsupported"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SaveFileRequest(BaseModel):
+    data_url: Optional[str] = None
+    source_url: Optional[str] = None
+    content: Optional[str] = None
+    filename: str
+    open_folder: bool = False
+
+@app.post("/api/save-file")
+async def save_file_endpoint(req: SaveFileRequest):
+    """
+    Saves a file (image, video, or subtitles) directly to the user's Windows Downloads folder.
+    Guarantees download functionality in both standalone desktop (PyWebView) and web browsers.
+    """
+    try:
+        downloads_dir = Path.home() / "Downloads"
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+
+        clean_name = Path(req.filename).name
+        target_path = downloads_dir / clean_name
+
+        # 1. Base64 Data URL (e.g. Canvas image export from ThumbnailStudio)
+        if req.data_url and "base64," in req.data_url:
+            _, b64_str = req.data_url.split("base64,", 1)
+            raw_bytes = base64.b64decode(b64_str)
+            target_path.write_bytes(raw_bytes)
+            try:
+                (EXPORTS_DIR / clean_name).write_bytes(raw_bytes)
+            except Exception:
+                pass
+
+        # 2. Source URL (e.g. rendered video from /api/exports/xxx.mp4)
+        elif req.source_url:
+            unquoted = urllib.parse.unquote(req.source_url)
+            source_name = Path(unquoted.replace("/api/exports/", "").replace("/api/video/", "").replace("/api/audio/", "")).name
+
+            source_path = EXPORTS_DIR / source_name
+            if not source_path.exists():
+                source_path = UPLOADS_DIR / source_name
+            if not source_path.exists():
+                from .services.whisper_stt import resolve_media_file
+                try:
+                    source_path = resolve_media_file(source_name)
+                except Exception:
+                    pass
+
+            if source_path and source_path.exists():
+                shutil.copy2(str(source_path), str(target_path))
+            else:
+                raise HTTPException(status_code=404, detail=f"Source video file not found: {source_name}")
+
+        # 3. Text content (e.g. Subtitles SRT)
+        elif req.content is not None:
+            target_path.write_text(req.content, encoding="utf-8")
+
+        else:
+            raise HTTPException(status_code=400, detail="Missing data_url, source_url, or content")
+
+        if req.open_folder and sys.platform == "win32":
+            subprocess.Popen(["explorer.exe", f"/select,{str(target_path)}"], creationflags=SUBPROCESS_FLAGS)
+
+        return {
+            "status": "success",
+            "filename": target_path.name,
+            "filepath": str(target_path),
+            "directory": str(downloads_dir)
+        }
+    except Exception as e:
+        print(f"Save file error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/open-file-location")
+async def open_file_location_endpoint(req: dict):
+    """Opens Windows Explorer highlighting a specific file in Downloads or Exports"""
+    try:
+        filepath = req.get("filepath")
+        filename = req.get("filename")
+        target = None
+        if filepath and Path(filepath).exists():
+            target = Path(filepath)
+        elif filename:
+            for d in [Path.home() / "Downloads", EXPORTS_DIR, UPLOADS_DIR]:
+                candidate = d / filename
+                if candidate.exists():
+                    target = candidate
+                    break
+
+        if target and target.exists() and sys.platform == "win32":
+            subprocess.Popen(["explorer.exe", f"/select,{str(target)}"], creationflags=SUBPROCESS_FLAGS)
+            return {"status": "success", "filepath": str(target)}
+
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer.exe", str(EXPORTS_DIR)], creationflags=SUBPROCESS_FLAGS)
+            return {"status": "fallback_directory", "directory": str(EXPORTS_DIR)}
+
         return {"status": "unsupported"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -477,7 +583,7 @@ async def translate_subtitles(req: TranslationRequest):
                 req.items,
                 source_lang=req.source_lang,
                 target_lang=req.target_lang,
-                api_key=req.gemini_api_key
+                api_key=resolve_gemini_api_key(req.gemini_api_key)
             )
         elif req.provider in ["nllb", "nllb_offline", "offline"]:
             translated = await translate_batch_nllb_offline(
@@ -637,6 +743,109 @@ async def get_system_fonts_endpoint():
     """Returns fonts installed locally on this PC, categorized for subtitle rendering."""
     return get_system_installed_fonts()
 
+# ==================== Google Gemini Persistent Settings ====================
+
+SETTINGS_FILE = STORAGE_DIR / "settings.json"
+
+def get_app_settings() -> dict:
+    if SETTINGS_FILE.exists():
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_app_settings(settings: dict):
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error saving settings: {e}")
+
+def resolve_gemini_api_key(req_key: Optional[str] = None) -> Optional[str]:
+    if req_key and req_key.strip():
+        return req_key.strip()
+    settings = get_app_settings()
+    saved = settings.get("gemini_api_key")
+    if saved and saved.strip():
+        return saved.strip()
+    return os.getenv("GEMINI_API_KEY")
+
+class SaveGeminiKeyRequest(BaseModel):
+    api_key: str
+
+@app.get("/api/settings/gemini-key")
+async def get_gemini_key_status_endpoint():
+    """Returns whether Google Gemini is connected and a masked version of the key."""
+    key = resolve_gemini_api_key()
+    if key:
+        masked = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
+        return {"is_connected": True, "masked_key": masked}
+    return {"is_connected": False, "masked_key": None}
+
+@app.post("/api/settings/gemini-key")
+async def save_gemini_key_endpoint(req: SaveGeminiKeyRequest):
+    """Validates the Gemini API key against Google's API, then saves to disk."""
+    key = (req.api_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="API key cannot be empty")
+
+    # Use Google's standard ListModels endpoint to validate the key across v1beta and v1.
+    # This automatically discovers which models are active for the user's specific account.
+    active_models = []
+    verified = False
+    last_err_detail = "Invalid Google Gemini API key"
+
+    for api_ver in ["v1beta", "v1"]:
+        try:
+            url = f"https://generativelanguage.googleapis.com/{api_ver}/models?key={key}"
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                res = await client.get(url)
+                if res.status_code == 200:
+                    verified = True
+                    data = res.json()
+                    models_list = data.get("models", [])
+                    for m in models_list:
+                        m_name = m.get("name", "").replace("models/", "")
+                        supported = m.get("supportedGenerationMethods", [])
+                        if "generateContent" in supported:
+                            active_models.append(m_name)
+                    break
+                else:
+                    try:
+                        err_json = res.json()
+                        last_err_detail = err_json.get("error", {}).get("message", last_err_detail)
+                    except Exception:
+                        last_err_detail = res.text
+        except httpx.RequestError as e:
+            last_err_detail = f"Network connection error: {str(e)}"
+
+    if not verified:
+        raise HTTPException(status_code=400, detail=f"Google API Error: {last_err_detail}")
+
+    settings = get_app_settings()
+    settings["gemini_api_key"] = key
+    if active_models:
+        settings["gemini_models"] = active_models
+    save_app_settings(settings)
+    masked = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
+    return {
+        "status": "connected",
+        "is_connected": True,
+        "masked_key": masked,
+        "active_models": active_models[:5],
+        "message": f"Google Gemini Verified! Found {len(active_models)} active models."
+    }
+
+@app.delete("/api/settings/gemini-key")
+async def delete_gemini_key_endpoint():
+    """Disconnects and removes the stored Google Gemini key."""
+    settings = get_app_settings()
+    settings.pop("gemini_api_key", None)
+    save_app_settings(settings)
+    return {"status": "disconnected", "is_connected": False}
+
 # ==================== AI Cover & Thumbnail Generator ====================
 
 class ThumbnailAiGenerateRequest(BaseModel):
@@ -658,7 +867,7 @@ async def ai_generate_thumbnail_endpoint(req: ThumbnailAiGenerateRequest):
             prompt=req.prompt,
             aspect_ratio=req.aspect_ratio,
             style=req.style,
-            gemini_api_key=req.gemini_api_key,
+            gemini_api_key=resolve_gemini_api_key(req.gemini_api_key),
             reference_image_b64=req.reference_image_b64
         )
         return result
@@ -671,7 +880,62 @@ async def ai_suggest_titles_endpoint(req: ThumbnailAiSuggestTitlesRequest):
     try:
         result = await suggest_khmer_titles(
             prompt=req.prompt,
-            gemini_api_key=req.gemini_api_key
+            gemini_api_key=resolve_gemini_api_key(req.gemini_api_key)
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class PosterTranslateRequest(BaseModel):
+    image_b64: str
+    gemini_api_key: Optional[str] = None
+    custom_title: Optional[str] = None
+
+class TranslateTitleRequest(BaseModel):
+    text: str
+    source_lang: str = "auto"
+    target_lang: str = "km"
+
+@app.post("/api/thumbnail/translate-text")
+async def translate_title_endpoint(req: TranslateTitleRequest):
+    """Translates a foreign movie title to natural Khmer typography titles using free Google translation."""
+    try:
+        if not req.text.strip():
+            raise HTTPException(status_code=400, detail="Text is empty")
+        from .services.translator import translate_text_google_free
+        clean_trans = await translate_text_google_free(req.text, source_lang=req.source_lang, target_lang=req.target_lang)
+        clean = clean_trans.strip()
+        
+        v1 = clean
+        v2 = clean.replace("!", "").strip() + "!" if not clean.endswith("!") else clean.replace("!", "").strip()
+        v3 = f"រឿង៖ {clean.replace('!', '').strip()}"
+        
+        titles = []
+        for t in [v1, v2, v3]:
+            if t and t not in titles:
+                titles.append(t)
+                
+        return {
+            "status": "success",
+            "original_title": req.text,
+            "detected_language": "Chinese / Foreign",
+            "khmer_titles": titles[:3],
+            "khmer_subtitles": [
+                "សម្រាយសាច់រឿងពេញ 1080p និយាយខ្មែរ",
+                "ភាគ ០១ [ចប់] ល្អមើលជក់ចិត្ត ហាមរំលង!"
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/thumbnail/ai-translate-poster")
+async def ai_translate_poster_endpoint(req: PosterTranslateRequest):
+    """Detects foreign/Chinese title text from an uploaded poster image and translates it to natural Khmer movie titles."""
+    try:
+        result = await extract_and_translate_poster_title(
+            image_b64=req.image_b64,
+            gemini_api_key=resolve_gemini_api_key(req.gemini_api_key),
+            custom_title=req.custom_title
         )
         return result
     except Exception as e:

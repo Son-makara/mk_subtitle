@@ -18,7 +18,9 @@ frontend/dist/
 # Node
 node_modules/
 
-# Storage
+# Storage & Local User Data (Never commit user API keys or settings!)
+storage/settings.json
+storage/*.json
 storage/uploads/*
 !storage/uploads/.gitkeep
 storage/audio_cache/*

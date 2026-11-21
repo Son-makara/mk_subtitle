@@ -31,17 +31,18 @@ import {
   HelpCircle,
   ChevronRight,
   Check,
-  EyeOff
+  EyeOff,
+  Camera
 } from 'lucide-react';
 
 import SubtitleDataTable from './components/SubtitleDataTable';
 import TimelineEditor from './components/TimelineEditor';
 import AIModal from './components/AIModal';
 import ExportModal from './components/ExportModal';
+import { downloadFile, openFileLocation } from './utils/file_downloader';
 import SettingsModal from './components/SettingsModal';
 import ShortcutsModal from './components/ShortcutsModal';
 import VideoQueueSidebar from './components/VideoQueueSidebar';
-import ThumbnailStudio from './components/ThumbnailStudio';
 import { formatTime } from './utils/time_formatter';
 import { getStoredTheme, getStoredAccent, applyTheme } from './utils/theme';
 
@@ -259,6 +260,60 @@ export default function App() {
       }
     } catch (e) {
       console.warn('PiP error:', e);
+    }
+  };
+
+  // 📸 Quick High-Res Frame Capture (Option 2: 1080p Screenshot & Copy to Clipboard for Photoshop/Canva)
+  const handleCaptureVideoFrame = async () => {
+    if (!videoRef.current) return;
+    try {
+      const video = videoRef.current;
+      const width = video.videoWidth || 1920;
+      const height = video.videoHeight || 1080;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, width, height);
+
+      const timeSec = Math.floor(video.currentTime);
+      const m = Math.floor(timeSec / 60);
+      const s = timeSec % 60;
+      const timeStr = `${String(m).padStart(2, '0')}m${String(s).padStart(2, '0')}s`;
+      const baseName = (videoFilename || 'video').replace(/\.[^/.]+$/, '');
+      const filename = `${baseName}_frame_${timeStr}.png`;
+
+      // 1. Download as PNG
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        // 2. Also copy directly to clipboard so user can instantly Ctrl+V in Photoshop/Canva!
+        try {
+          if (navigator.clipboard && window.ClipboardItem) {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': blob })
+            ]);
+            triggerOsd(`📸 ថតបានរូប ${width}x${height} & ចម្លងទៅ Clipboard! (Ctrl+V ក្នុង Photoshop/Canva)`);
+            return;
+          }
+        } catch (clipErr) {
+          console.warn('Clipboard write ignored:', clipErr);
+        }
+
+        triggerOsd(`📸 ថតបានរូបប្លង់ ${width}x${height} (${filename})`);
+      }, 'image/png', 1.0);
+    } catch (err) {
+      console.error('Frame capture error:', err);
+      triggerOsd(`❌ មិនអាចថតរូបបាន: ${err.message}`);
     }
   };
 
@@ -1991,12 +2046,11 @@ export default function App() {
         await writable.write(text);
         await writable.close();
       } else {
-        const blob = new Blob([text], { type: 'text/plain;charset=utf-8;' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = suggestedName;
-        a.click();
+        await downloadFile({
+          content: text,
+          filename: suggestedName,
+          openFolder: false
+        });
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -2049,16 +2103,15 @@ export default function App() {
       }
 
       if (!saved) {
-        const a = document.createElement('a');
-        a.href = videoToSave.download_url;
-        a.download = suggestedName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        await downloadFile({
+          downloadUrl: videoToSave.download_url,
+          filename: suggestedName,
+          openFolder: true
+        });
 
         setRenderToast({
           type: 'success',
-          message: `✅ Saved: ${suggestedName}`,
+          message: `✅ Saved to Downloads: ${suggestedName}`,
           data: videoToSave
         });
       }
@@ -2289,16 +2342,15 @@ export default function App() {
 
       if (!savedDirectly) {
         // Fallback to direct download with episode filename
-        const a = document.createElement('a');
-        a.href = data.download_url;
-        a.download = suggestedName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        await downloadFile({
+          downloadUrl: data.download_url,
+          filename: suggestedName,
+          openFolder: false
+        });
 
         setRenderToast({
           type: 'success',
-          message: `✅ Render Complete: ${suggestedName}`,
+          message: `✅ Render Complete (Saved to Downloads): ${suggestedName}`,
           data: data
         });
       }
@@ -2638,88 +2690,7 @@ export default function App() {
             }}
           />
 
-          {/* Primary Studio Mode Switcher: Subtitle vs Thumbnail Studio */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              backgroundColor: 'var(--bg-base)',
-              padding: '2px',
-              borderRadius: '7px',
-              border: '1px solid var(--border-color)',
-              gap: '2px',
-              flexShrink: 0
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setStudioMode('subtitle')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '3px 8px',
-                borderRadius: '5px',
-                fontSize: '11px',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                backgroundColor: studioMode === 'subtitle' ? 'var(--bg-hover)' : 'transparent',
-                color: studioMode === 'subtitle' ? '#ffffff' : 'var(--text-muted)',
-                boxShadow: studioMode === 'subtitle' ? '0 1px 3px rgba(0,0,0,0.3)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-              title="Subtitle, AI Dubbing & Timeline Editor"
-            >
-              <Film size={12} style={{ color: studioMode === 'subtitle' ? '#ef4444' : 'currentColor' }} />
-              <span>Subtitle Studio</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStudioMode('thumbnail')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '3px 8px',
-                borderRadius: '5px',
-                fontSize: '11px',
-                fontWeight: 600,
-                border: studioMode === 'thumbnail' ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid transparent',
-                cursor: 'pointer',
-                backgroundColor: studioMode === 'thumbnail' ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
-                color: studioMode === 'thumbnail' ? '#f87171' : 'var(--text-muted)',
-                boxShadow: studioMode === 'thumbnail' ? '0 1px 4px rgba(239,68,68,0.25)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-              title="Create YouTube & TikTok covers with Khmer text templates"
-            >
-              <Sparkles size={12} style={{ color: '#f59e0b' }} />
-              <span>Cover & Thumbnail</span>
-              <span
-                style={{
-                  fontSize: '9px',
-                  fontWeight: 800,
-                  backgroundColor: '#ef4444',
-                  color: '#ffffff',
-                  padding: '1px 4px',
-                  borderRadius: '3px',
-                  lineHeight: 1
-                }}
-              >
-                NEW
-              </span>
-            </button>
-          </div>
 
-          <div
-            style={{
-              height: '16px',
-              width: '1px',
-              backgroundColor: 'var(--border-color)',
-              margin: '0 2px'
-            }}
-          />
 
           {/* Current Video File Pill */}
           <div
@@ -2941,7 +2912,7 @@ export default function App() {
       {/* 1. Subtitle Studio Complete Workspace (Queue + Player + Table + Timeline + Status Bar) */}
       <div
         style={{
-          display: studioMode === 'subtitle' ? 'flex' : 'none',
+          display: 'flex',
           flexDirection: 'column',
           flex: 1,
           overflow: 'hidden',
@@ -3320,6 +3291,30 @@ export default function App() {
                       </div>
                     )}
                   </div>
+
+                  {/* 📸 Quick Frame Capture Button (Option 2: 1080p for Photoshop/Canva) */}
+                  <button
+                    type="button"
+                    onClick={handleCaptureVideoFrame}
+                    className="btn-secondary"
+                    style={{
+                      padding: '3px 8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: '#38bdf8',
+                      borderColor: 'rgba(56, 189, 248, 0.4)',
+                      backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: !videoUrl ? 'not-allowed' : 'pointer'
+                    }}
+                    title="📸 ថតយករូបប្លង់ច្បាស់ពីវីដេអូ (1080p Frame Capture & Auto-Copy to Clipboard for Photoshop/Canva)"
+                    disabled={!videoUrl}
+                  >
+                    <Camera size={12} style={{ color: '#38bdf8' }} />
+                    <span>ថតប្លង់ (Capture)</span>
+                  </button>
 
                   {/* Picture-in-Picture Button */}
                   <button
@@ -3939,24 +3934,7 @@ export default function App() {
       </div>
       </div>
 
-      {/* 2. Cover & Thumbnail Studio Workspace */}
-      {studioMode === 'thumbnail' && (
-        <ThumbnailStudio
-          videoRef={videoRef}
-          videoUrl={videoUrl}
-          videoFilename={videoFilename}
-          currentTime={currentTime}
-          videoDuration={videoDuration}
-          videoQueue={videoQueue}
-          activeVideoId={activeVideoId}
-          onSelectVideo={handleSelectVideo}
-          onSwitchToSubtitle={() => setStudioMode('subtitle')}
-          onOpenExport={() => {
-            setExportType('burn');
-            setExportModalOpen(true);
-          }}
-        />
-      )}
+
 
       {/* Modals */}
       <AIModal

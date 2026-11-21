@@ -5,7 +5,34 @@ import urllib.parse
 from typing import Optional, Dict, Any, List
 import httpx
 from pathlib import Path
-from ..config import UPLOADS_DIR
+from ..config import UPLOADS_DIR, STORAGE_DIR
+
+CANDIDATE_GEMINI_MODELS = [
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-flash-latest",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-pro",
+    "gemini-pro"
+]
+
+def get_candidate_gemini_models() -> List[str]:
+    base = list(CANDIDATE_GEMINI_MODELS)
+    try:
+        settings_path = STORAGE_DIR / "settings.json"
+        if settings_path.exists():
+            import json
+            with open(settings_path, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                discovered = saved.get("gemini_models", [])
+                for sm in reversed(discovered):
+                    if sm not in base:
+                        base.insert(0, sm)
+    except Exception:
+        pass
+    return base
 
 STYLE_PROMPTS = {
     "cinematic": "cinematic movie scene, highly detailed, dramatic atmospheric lighting, 8k resolution, photorealistic",
@@ -75,18 +102,17 @@ async def generate_ai_cover_image(
     if reference_image_b64 and key:
         try:
             clean_b64 = reference_image_b64.split(",")[-1] if "," in reference_image_b64 else reference_image_b64
-            vision_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
             vision_body = {
                 "contents": [
                     {
                         "parts": [
                             {
                                 "text": (
-                                    f"You are a master movie poster artist. Analyze the key subject, character appearance, "
-                                    f"and composition in this reference image. Then create a vivid, descriptive prompt that retains "
-                                    f"the identity and pose of the subject from this image while redesigning the background, lighting, "
-                                    f"atmosphere, and visual effects to match this instruction: '{clean_prompt}'. "
-                                    f"Return ONLY the enhanced prompt string without commentary."
+                                    f"You are a master movie poster artist. Analyze this reference image carefully: "
+                                    f"Identify the characters (gender, appearance, stylish clothing, hair), atmosphere, "
+                                    f"and lighting. Then create a vivid, descriptive prompt that retains the character appearances "
+                                    f"and daylight mood from this image while following: '{clean_prompt}'. "
+                                    f"Return ONLY the enhanced prompt string without commentary or markdown."
                                 )
                             },
                             {
@@ -99,16 +125,27 @@ async def generate_ai_cover_image(
                     }
                 ]
             }
-            async with httpx.AsyncClient(timeout=25.0) as client:
-                v_res = await client.post(vision_url, json=vision_body)
-                if v_res.status_code == 200:
-                    v_data = v_res.json()
-                    enhanced = v_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    if enhanced:
-                        full_prompt = f"{enhanced}, {style_suffix}"
-                        print(f"Gemini Vision enhanced prompt: {full_prompt[:120]}...")
+            found = False
+            for api_ver in ["v1beta", "v1"]:
+                if found:
+                    break
+                for m in get_candidate_gemini_models():
+                    try:
+                        vision_url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{m}:generateContent?key={key}"
+                        async with httpx.AsyncClient(timeout=25.0) as client:
+                            v_res = await client.post(vision_url, json=vision_body)
+                            if v_res.status_code == 200:
+                                v_data = v_res.json()
+                                enhanced = v_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                                if enhanced:
+                                    full_prompt = f"{enhanced}, {style_suffix}"
+                                    print(f"Gemini Vision ({m} on {api_ver}) enhanced prompt: {full_prompt[:120]}...")
+                                    found = True
+                                    break
+                    except Exception as e:
+                        pass
         except Exception as e:
-            print(f"Notice: Gemini Vision reference image analysis error: {e}")
+            print(f"Notice: Gemini Vision reference image error: {e}")
 
     # If reference image is provided without Gemini key, save reference image locally and adjust prompt
     if reference_image_b64 and not key:
@@ -216,17 +253,22 @@ Return strictly valid JSON in this exact structure:
   "titles": ["ចំណងជើង១", "ចំណងជើង២", "ចំណងជើង៣"],
   "subtitles": ["ឃ្លាទាក់ទាញ១", "ឃ្លាទាក់ទាញ២"]
 }}"""
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
             body = {
                 "contents": [{"parts": [{"text": sys_prompt}]}],
                 "generationConfig": {"temperature": 0.7, "response_mime_type": "application/json"}
             }
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                res = await client.post(url, json=body)
-                if res.status_code == 200:
-                    import json
-                    text_resp = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-                    return json.loads(text_resp)
+            for api_ver in ["v1beta", "v1"]:
+                for m in get_candidate_gemini_models():
+                    try:
+                        url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{m}:generateContent?key={key}"
+                        async with httpx.AsyncClient(timeout=20.0) as client:
+                            res = await client.post(url, json=body)
+                            if res.status_code == 200:
+                                import json
+                                text_resp = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+                                return json.loads(text_resp)
+                    except Exception as m_err:
+                        pass
         except Exception as e:
             print(f"Notice: Gemini title suggestion fallback: {e}")
 
@@ -244,3 +286,142 @@ Return strictly valid JSON in this exact structure:
         genre = "general"
 
     return GENRE_KHMER_TEMPLATES.get(genre, GENRE_KHMER_TEMPLATES["general"])
+
+async def extract_and_translate_poster_title(
+    image_b64: str,
+    gemini_api_key: Optional[str] = None,
+    custom_title: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Analyzes an uploaded movie poster or video screenshot containing Chinese/foreign title text.
+    1. Uses Gemini Vision to read and identify the original title text and series name.
+    2. Translates and adapts the title into high-CTR, natural Khmer movie titles and subtitle hooks.
+    3. Falls back gracefully to free translation if custom_title is supplied or if no Gemini key is provided.
+    """
+    if custom_title and custom_title.strip():
+        try:
+            from .translator import translate_text_google_free
+            clean_trans = await translate_text_google_free(custom_title.strip(), "auto", "km")
+            c = clean_trans.strip()
+            v1 = c
+            v2 = c.replace("!", "").strip() + "!" if not c.endswith("!") else c.replace("!", "").strip()
+            v3 = f"រឿង៖ {c.replace('!', '').strip()}"
+            titles = []
+            for t in [v1, v2, v3]:
+                if t and t not in titles:
+                    titles.append(t)
+            return {
+                "status": "success",
+                "detected_original_title": custom_title.strip(),
+                "detected_language": "Chinese / Foreign",
+                "english_title": "",
+                "story_summary": f"Translated from '{custom_title.strip()}'",
+                "khmer_titles": titles[:3],
+                "khmer_subtitles": [
+                    "សម្រាយសាច់រឿងពេញ 1080p និយាយខ្មែរ",
+                    "ភាគ ០១ [ចប់] ល្អមើលជក់ចិត្ត ហាមរំលង!"
+                ],
+                "suggested_font_style": "koulen"
+            }
+        except Exception as e:
+            print(f"Notice: Google Free translation error: {e}")
+
+    if not image_b64:
+        raise ValueError("No image data provided for poster analysis.")
+
+    clean_b64 = image_b64.split(",")[-1] if "," in image_b64 else image_b64
+    
+    mime_type = "image/jpeg"
+    if "data:image/png" in image_b64:
+        mime_type = "image/png"
+    elif "data:image/webp" in image_b64:
+        mime_type = "image/webp"
+
+    key = gemini_api_key or os.getenv("GEMINI_API_KEY")
+
+    if key:
+        try:
+            sys_prompt = """You are an elite Asian cinema localization expert and Cambodian movie recap title strategist.
+Analyze the provided movie/drama/anime poster or video frame carefully:
+1. Detect and read all title text visible on the image (especially Chinese characters 汉字, Korean, Japanese, or English).
+2. If this is a known movie, TV drama, or anime, identify the exact series name in its original language and English (e.g. 斗破苍穹 -> Battle Through the Heavens, 斗罗大陆 -> Soul Land, 庆余年 -> Joy of Life, 狂飙 -> The Knockout).
+3. Translate and creatively adapt this story title into 3 captivating, fluent Khmer movie titles (ចំណងជើងរឿងខ្មែរ) that sound authentic, dramatic, and high-CTR for Cambodian YouTube/TikTok movie recap channels (using authentic movie vocabulary like ដីគោក..., សមរភូមិ..., វីរបុរស..., គំនុំ..., ពិភព..., ជីវិតថ្មី...).
+4. Create 2 irresistible subtitle hooks in Khmer (ឃ្លាទាក់ទាញ/សម្រាយរឿង, e.g. "សម្រាយសាច់រឿងពេញ 1080p និយាយខ្មែរ", "ភាគ ០១ [ចប់] ល្អមើលជក់ចិត្ត ហាមរំលង!").
+
+Return STRICT JSON ONLY without markdown fences or additional explanation:
+{
+  "detected_original_title": "<Original title found on image, e.g. 斗破苍穹 or 庆余年>",
+  "detected_language": "<e.g. Chinese (Simplified), Korean, Japanese, English>",
+  "english_title": "<e.g. Battle Through the Heavens>",
+  "story_summary": "<1-line overview of the genre and plot>",
+  "khmer_titles": [
+    "<Creative Khmer Title 1>",
+    "<Creative Khmer Title 2>",
+    "<Creative Khmer Title 3>"
+  ],
+  "khmer_subtitles": [
+    "<Khmer Subtitle Hook 1>",
+    "<Khmer Subtitle Hook 2>"
+  ],
+  "suggested_font_style": "koulen"
+}"""
+            vision_body = {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": sys_prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": mime_type,
+                                    "data": clean_b64
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "response_mime_type": "application/json"
+                }
+            }
+            for api_ver in ["v1beta", "v1"]:
+                for m in get_candidate_gemini_models():
+                    try:
+                        vision_url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{m}:generateContent?key={key}"
+                        async with httpx.AsyncClient(timeout=30.0) as client:
+                            res = await client.post(vision_url, json=vision_body)
+                            if res.status_code == 200:
+                                data = res.json()
+                                raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                                if raw_text.startswith("```"):
+                                    raw_text = raw_text.strip("`")
+                                    if raw_text.startswith("json"):
+                                        raw_text = raw_text[4:].strip()
+                                import json
+                                parsed = json.loads(raw_text)
+                                parsed["status"] = "success"
+                                return parsed
+                    except Exception as m_err:
+                        pass
+        except Exception as e:
+            print(f"Notice: Gemini Vision poster analysis error: {e}")
+
+    # Fallback when no Gemini key is provided or Gemini call fails:
+    return {
+        "status": "partial",
+        "detected_original_title": "Original Poster Detected",
+        "detected_language": "Chinese / Foreign",
+        "english_title": "Asian Drama / Movie",
+        "story_summary": "Original poster loaded. For 100% automatic OCR text reading, please connect your Gemini API key in Settings.",
+        "khmer_titles": [
+            "សមរភូមិមហាសាល ២០២៦",
+            "ជីវិតថ្មីនៃអ្នកក្លាហាន",
+            "រឿងភាគល្បីប្រចាំឆ្នាំ និយាយខ្មែរ"
+        ],
+        "khmer_subtitles": [
+            "សម្រាយសាច់រឿងពេញ 1080p និយាយខ្មែរ",
+            "ភាគ ០១ [ចប់] ល្អមើលជក់ចិត្ត ហាមរំលង!"
+        ],
+        "suggested_font_style": "koulen",
+        "notice": "Tip: Enter your free Gemini API key in Settings for 100% automatic reading of Chinese poster characters!"
+    }

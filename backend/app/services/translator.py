@@ -4,6 +4,7 @@ import httpx
 import asyncio
 from typing import List, Optional
 from ..models.subtitle import SubtitleItem
+from ..config import STORAGE_DIR
 
 LANGUAGE_MAP = {
     "km": "Khmer",
@@ -67,6 +68,30 @@ async def translate_batch_google_free(
     tasks = [translate_one(it.model_copy()) for it in items]
     return await asyncio.gather(*tasks)
 
+def get_candidate_models() -> List[str]:
+    base = [
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite-preview",
+        "gemini-flash-latest",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+        "gemini-pro"
+    ]
+    try:
+        settings_path = STORAGE_DIR / "settings.json"
+        if settings_path.exists():
+            with open(settings_path, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                discovered = saved.get("gemini_models", [])
+                for sm in reversed(discovered):
+                    if sm not in base:
+                        base.insert(0, sm)
+    except Exception:
+        pass
+    return base
+
 async def translate_batch_gemini(
     items: List[SubtitleItem],
     source_lang: str = "auto",
@@ -98,31 +123,36 @@ Respond ONLY with valid JSON in this exact structure:
 ]
 """
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
     headers = {"Content-Type": "application/json"}
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.2, "response_mime_type": "application/json"}
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, headers=headers, json=body)
-            if resp.status_code == 200:
-                result = resp.json()
-                raw_json = result["candidates"][0]["content"]["parts"][0]["text"]
-                translated_data = json.loads(raw_json)
-                lookup = {entry["id"]: entry["translated_text"] for entry in translated_data if "id" in entry}
+    candidate_models = get_candidate_models()
 
-                copied = []
-                for it in items:
-                    c = it.model_copy()
-                    c.translated_text = lookup.get(c.id, c.text)
-                    copied.append(c)
-                return copied
-    except Exception as e:
-        print(f"Gemini translation failed: {e}. Falling back to Google free translate.")
+    for api_ver in ["v1beta", "v1"]:
+        for m in candidate_models:
+            try:
+                url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{m}:generateContent?key={key}"
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, headers=headers, json=body)
+                    if resp.status_code == 200:
+                        result = resp.json()
+                        raw_json = result["candidates"][0]["content"]["parts"][0]["text"]
+                        translated_data = json.loads(raw_json)
+                        lookup = {entry["id"]: entry["translated_text"] for entry in translated_data if "id" in entry}
 
+                        copied = []
+                        for it in items:
+                            c = it.model_copy()
+                            c.translated_text = lookup.get(c.id, c.text)
+                            copied.append(c)
+                        return copied
+            except Exception as e:
+                pass
+
+    print("All Gemini models failed. Falling back to Google free translate.")
     return await translate_batch_google_free(items, source_lang, target_lang)
 
 # ==================== Meta NLLB-200 100% Offline AI Translation ====================

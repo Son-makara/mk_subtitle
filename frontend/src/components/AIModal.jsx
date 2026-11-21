@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sparkles, Languages, X, Key, Info, Loader2, FolderOpen, Film, Check } from 'lucide-react';
 
 export default function AIModal({
@@ -23,6 +23,20 @@ export default function AIModal({
   const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('km');
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('mk_gemini_api_key') || '');
+  const [isBackendGeminiConnected, setIsBackendGeminiConnected] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      const stored = localStorage.getItem('mk_gemini_api_key') || '';
+      if (stored) setGeminiApiKey(stored);
+      fetch('/api/settings/gemini-key')
+        .then((res) => res.json())
+        .then((data) => {
+          setIsBackendGeminiConnected(!!data.is_connected);
+        })
+        .catch((e) => console.warn('Gemini status check:', e));
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -356,8 +370,11 @@ export default function AIModal({
 
             {provider === 'gemini' && (
               <div>
-                <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  Gemini API Key:
+                <label style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span>Gemini API Key:</span>
+                  {isBackendGeminiConnected && (
+                    <span style={{ fontSize: '10px', color: '#34d399', fontWeight: 600 }}>🟢 Google Account Connected</span>
+                  )}
                 </label>
                 <div style={{ position: 'relative' }}>
                   <Key size={14} style={{ position: 'absolute', left: '10px', top: '12px', color: 'var(--text-muted)' }} />
